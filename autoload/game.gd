@@ -75,6 +75,8 @@ var _pause_since := 0
 var _pause_total := 0
 var _card_serial := 0
 var _quitting := false
+## The tension state last sent on the Bus.
+var _tense_on := false
 
 
 func _ready() -> void:
@@ -326,14 +328,12 @@ func restart() -> void:
 		_set_pause_state(false)
 	_result.close()
 	_defeat.close()
-	var was_tense: bool = _session.tense
 	var hues := _pick_hues()
 	_new_session(hues)
 	_phase = &"intro"
 	_board.play_restart(hues)
 	Bus.level_restarted.emit(level_index)
-	if was_tense:
-		Bus.tension_changed.emit(false)
+	_set_tension(false)
 	Bus.session_changed.emit(_session.snapshot())
 	if screen != &"level":
 		_set_screen(&"level")
@@ -427,8 +427,9 @@ func _play_swipe(dir: int) -> void:
 		Bus.session_changed.emit(_session.snapshot())
 		if outcome.tier_dropped:
 			Bus.star_lost.emit(int(outcome.stars))
-		if outcome.tense_changed:
-			Bus.tension_changed.emit(bool(outcome.tense))
+		# On the losing move the tension stays until the defeat ceremony starts.
+		if outcome.tense_changed and outcome.status != &"lost":
+			_set_tension(bool(outcome.tense))
 		if outcome.status == &"won" or outcome.status == &"lost":
 			_queued = -1
 	_board.player.play(outcome)
@@ -463,6 +464,7 @@ func _end_level(status: StringName) -> void:
 		_board.ceremonies.play_win(int(_last_outcome.get("last_cell", -1)))
 	else:
 		_board.ceremonies.play_defeat()
+		_set_tension(false)
 
 
 func _on_ceremony_finished(_kind: StringName) -> void:
@@ -520,7 +522,6 @@ func _leave_level() -> void:
 		_set_pause_state(false)
 	if _phase == &"off":
 		return
-	var was_tense: bool = _session != null and _session.tense
 	_phase = &"off"
 	_swiping = false
 	_queued = -1
@@ -533,9 +534,15 @@ func _leave_level() -> void:
 	_defeat.close()
 	_session = null
 	_level = null
-	if was_tense:
-		Bus.tension_changed.emit(false)
+	_set_tension(false)
 	Music.unduck(Tuning.Audio.UNDUCK_TIME)
+
+
+func _set_tension(on: bool) -> void:
+	if on == _tense_on:
+		return
+	_tense_on = on
+	Bus.tension_changed.emit(on)
 
 
 func _set_screen(value: StringName) -> void:
