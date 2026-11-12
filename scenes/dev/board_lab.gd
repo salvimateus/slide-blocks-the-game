@@ -142,7 +142,7 @@ func _run_level() -> void:
 		_mark("restart_end")
 	if Harness.active():
 		await get_tree().create_timer(0.3).timeout
-		get_tree().quit(0)
+		Game.quit(0)
 
 
 func _on_wave_middle(kind: StringName) -> void:

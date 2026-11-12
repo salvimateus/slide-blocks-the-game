@@ -24,6 +24,11 @@ const RIM_ROUND_CONCAVE := 30.0
 const WELL_ROUND_CONVEX := 18.0
 const WELL_ROUND_CONCAVE := 12.0
 
+# Obstacle: a raised wall block, darker than every paint color and block body.
+const OBSTACLE_TOP := Color("#6C68D0")
+const OBSTACLE_SIDE := Color("#47429A")
+const OBSTACLE_EDGE := Color("#8E8BEA")
+
 # Fit, in base units.
 const MAX_PITCH_BASE := 108.0          # largest tile pitch on screen
 

@@ -323,17 +323,21 @@ class Painter extends Node2D:
 		_round_arc(face.position + Vector2(25, 25), 14.0, deg_to_rad(190), deg_to_rad(258), 5.0, gloss)
 		draw_circle(face.position + Vector2(47, 11.5), 3.0, gloss, true, -1.0, true)
 
-	## An obstacle is rim material: it fills the whole pitch with no well gap, so it never reads as a tile.
+	## An obstacle is a raised block of the tray wall: a deep periwinkle top on a darker side, darker than every
+	## paint color and block body, so it never reads as a tile.
 	func _obstacle(c: Vector2) -> void:
-		var s := BT.PITCH + 8.0
-		var top := c - Vector2(s, s) * 0.5
-		_rrect(Rect2(top, Vector2(s, s)), 18.0, Pal.TRAY_SHADOW)
-		_rrect(Rect2(top, Vector2(s, s - 12.0)), 18.0, Pal.TRAY_HIGHLIGHT)
-		_rrect(Rect2(top + Vector2(3, 6), Vector2(s - 6.0, s - 18.0)), 16.0, Pal.PERIWINKLE)
+		var w := BT.PITCH + 8.0
+		var x := c.x - w * 0.5
+		var top_y := c.y - 70.0
+		_rrect(Rect2(x + 2.0, c.y - 56.0, w - 4.0, 127.0), 20.0, Color(Pal.INK, 0.22))
+		_rrect(Rect2(x, top_y, w, 136.0), 20.0, BT.OBSTACLE_SIDE)
+		_rrect(Rect2(x, top_y, w, 116.0), 20.0, BT.OBSTACLE_EDGE)
+		_rrect(Rect2(x + 3.0, top_y + 4.0, w - 6.0, 109.0), 17.0, BT.OBSTACLE_TOP)
+		_rrect(Rect2(x + 14.0, top_y + 12.0, w - 28.0, 12.0), 6.0, Color(BT.OBSTACLE_EDGE, 0.55))
 		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			var p: Vector2 = c + Vector2(0, -6) + corner * 30.0
-			draw_circle(p + Vector2(0, 2), 7.0, Pal.TRAY_SHADOW, true, -1.0, true)
-			draw_circle(p, 7.0, Pal.TRAY_HIGHLIGHT, true, -1.0, true)
+			var p: Vector2 = c + Vector2(0, -10) + corner * Vector2(30.0, 24.0)
+			draw_circle(p, 6.5, BT.OBSTACLE_SIDE, true, -1.0, true)
+			draw_circle(p + Vector2(-1.5, -1.5), 3.0, Color(BT.OBSTACLE_EDGE, 0.8), true, -1.0, true)
 
 	## The rail of a NW deflector: a fillet in the closed corner, along the arc that the blocks follow.
 	func _rail(c: Vector2) -> void:
