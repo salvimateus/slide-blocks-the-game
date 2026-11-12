@@ -20,6 +20,8 @@ const TABLE := {
 	"level_new": "Nova",
 	"level_best": "Recorde: {moves} movimentos",
 	"level_unlocked": "Nova fase liberada!",
+	"level_subtitle": "Fase {n} · {name}",
+	"levels_stars_total": "{n}/{max}",
 
 	# Level names.
 	"level_1_name": "Primeiro Docinho",
@@ -64,11 +66,12 @@ const TABLE := {
 	"result_moves": "Movimentos",
 	"result_stars": "Estrelas",
 	"result_new_best": "Novo recorde!",
-	"result_range": "Faixa de {stars} estrelas: {lo} a {hi} movimentos. Você fez {moves}.",
-	"result_range_one": "Faixa de 1 estrela: {lo} a {hi} movimentos. Você fez {moves}.",
+	"result_range": "Faixa de {stars} estrelas: {lo} a {hi} movimentos.\nVocê fez {moves}.",
+	"result_range_one": "Faixa de 1 estrela: {lo} a {hi} movimentos.\nVocê fez {moves}.",
 	"result_range_three": "3 estrelas",
 	"result_range_two": "2 estrelas",
 	"result_range_one_short": "1 estrela",
+	"range_span": "{lo}-{hi}",
 	"result_retry": "Repetir",
 	"result_next": "Próxima fase",
 	"result_levels": "Fases",
