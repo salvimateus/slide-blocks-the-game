@@ -74,8 +74,10 @@ var _time_start := 0
 var _time_end := 0
 var _pause_since := 0
 var _pause_total := 0
-var _card_serial := 0
+var _announce_serial := 0
+var _announce_pending := false
 var _quitting := false
+var _cover_up := false
 ## The tension state last sent on the Bus.
 var _tense_on := false
 
@@ -185,11 +187,21 @@ func boot(host: Node) -> void:
 	if left > 0.0:
 		await get_tree().create_timer(left, true, false, true).timeout
 	_booted = true
+	# The first screen is announced when the cover is gone and Home is at rest, so the harness never acts below it.
+	_cover_up = true
 	open_home()
 	var fade := cover.create_tween()
 	fade.tween_property(cover.get_child(0), "modulate:a", 0.0, COVER_FADE_TIME)
 	fade.tween_callback(cover.queue_free)
+	fade.tween_callback(_on_cover_gone)
 	Music.start()
+
+
+func _on_cover_gone() -> void:
+	_cover_up = false
+	if _announce_pending:
+		_announce_pending = false
+		Bus.screen_changed.emit(screen)
 
 
 func _make_cover() -> CanvasLayer:
@@ -258,7 +270,16 @@ func _warm_up(ui: CanvasLayer) -> void:
 	_board.set_scrim_now(false)
 	_board.visible = false
 	await _warm_up_bake(level, hues)
-	_hud.close()
+	_hide_now(_hud)
+
+
+## Hides a screen at once, with no fade, so nothing of the warm-up shows when the cover lifts.
+func _hide_now(node: Control) -> void:
+	node.call("_kill_screen_tween")
+	node.is_open = false
+	node.visible = false
+	node.modulate.a = 1.0
+	node.position = Vector2.ZERO
 
 
 ## Shows each screen at almost zero opacity, with sample data, so the baker draws every icon,
@@ -289,8 +310,7 @@ func _warm_up_bake(level: RefCounted, hues: PackedInt32Array) -> void:
 		await get_tree().process_frame
 		frames += 1
 	for node in screens:
-		node.visible = false
-		node.modulate.a = 1.0
+		_hide_now(node)
 
 
 func _prewarm_tree(node: Node) -> void:
@@ -320,7 +340,8 @@ func open_home() -> void:
 	_demo.visible = true
 	_demo.start(_demo_rect())
 	_home.open()
-	_set_screen(&"home")
+	_set_screen(&"home", false)
+	_announce_on_open(_home, &"home")
 
 
 func open_levels() -> void:
@@ -331,7 +352,8 @@ func open_levels() -> void:
 	_demo.stop()
 	_demo.visible = false
 	_levels.open()
-	_set_screen(&"levels")
+	_set_screen(&"levels", false)
+	_announce_on_open(_levels, &"levels")
 
 
 func start_level(index: int) -> void:
@@ -531,15 +553,24 @@ func _on_ceremony_finished(_kind: StringName) -> void:
 	var card: Control = _result if won else _defeat
 	var value: StringName = &"result" if won else &"defeat"
 	card.use_scrim = true
-	_card_serial += 1
-	card.opened.connect(_on_card_opened.bind(value, _card_serial), CONNECT_ONE_SHOT)
 	card.open(summary)
 	screen = value
+	_announce_on_open(card, value)
 
 
-## The card screen is announced when the card is at rest, so the harness events see the final card.
-func _on_card_opened(value: StringName, serial: int) -> void:
-	if serial == _card_serial and screen == value and _phase == &"card":
+## Home, level select and the cards are announced when the screen is at rest (and the boot cover is gone),
+## so the harness events see only the final screen.
+func _announce_on_open(node: Control, value: StringName) -> void:
+	_announce_serial += 1
+	node.opened.connect(_on_screen_opened.bind(value, _announce_serial), CONNECT_ONE_SHOT)
+
+
+func _on_screen_opened(value: StringName, serial: int) -> void:
+	if serial != _announce_serial or screen != value:
+		return
+	if _cover_up:
+		_announce_pending = true
+	else:
 		Bus.screen_changed.emit(value)
 
 
@@ -587,11 +618,12 @@ func _set_tension(on: bool) -> void:
 	Bus.tension_changed.emit(on)
 
 
-func _set_screen(value: StringName) -> void:
+func _set_screen(value: StringName, announce: bool = true) -> void:
 	screen = value
 	if value != &"level" and value != &"result" and value != &"defeat":
 		Music.set_fill(1.0)
-	Bus.screen_changed.emit(value)
+	if announce and not _cover_up:
+		Bus.screen_changed.emit(value)
 
 
 func _set_pause_state(on: bool) -> void:
