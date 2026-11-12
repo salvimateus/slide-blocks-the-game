@@ -58,10 +58,13 @@ func _ready() -> void:
 	_last_usec = Time.get_ticks_usec()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	var dt := (now - _last_usec) / 1000000.0
 	_last_usec = now
+	if _virtual:
+		# The virtual clock follows the frame clock, so a --fixed-fps run keeps the beat in step with the game.
+		dt = delta / maxf(Engine.time_scale, 0.0001)
 	_frame_time = clampf(dt, 1.0 / 240.0, 1.0 / 20.0)
 	if not _playing:
 		return

@@ -70,6 +70,12 @@ func warm_up() -> void:
 			_playback.play_stream(stream, 0.0, AudioTuning.WARM_UP_DB, 1.0)
 
 
+## Stops all voices. Game calls it before the app quits, so the audio server frees the voices.
+func silence() -> void:
+	if _player != null:
+		_player.stop()
+
+
 ## The path of each stream (effects and music) that did not load.
 func missing() -> PackedStringArray:
 	return AudioBank.missing()

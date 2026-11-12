@@ -158,7 +158,7 @@ func finish(code: int) -> void:
 	_quit_code = code
 	_print_perf_summary()
 	if _pending_shots == 0:
-		get_tree().quit(code)
+		Game.quit(code)
 
 
 func _capture(path: String) -> void:
@@ -177,7 +177,7 @@ func _capture(path: String) -> void:
 		_quit_code = -1
 		finish(1)
 	elif _quit_code >= 0 and _pending_shots == 0:
-		get_tree().quit(_quit_code)
+		Game.quit(_quit_code)
 
 
 func _save_viewport(path: String) -> Error:
@@ -221,7 +221,7 @@ func _restart_watchdog() -> void:
 func _on_timeout() -> void:
 	print("HARNESS TIMEOUT")
 	_print_perf_summary()
-	get_tree().quit(2)
+	Game.quit(2)
 
 
 func _on_freeze() -> void:
