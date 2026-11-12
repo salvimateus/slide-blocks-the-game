@@ -1,12 +1,31 @@
 extends Node
-## Scripted-run arguments and the screenshot service. The agent harness adds the scripted play in Wave 1.
+## Scripted runs: the screenshot service, scripted play, logs and the watchdog.
 ## Arguments come after `--` on the Godot command line, in the form --key=value or --flag.
+## The harness does nothing when no argument is present, and stays silent in a `--script` tool run.
+## It reads the game only through the Game API and the Bus signals.
+
+const LevelsData := preload("res://scripts/core/levels_data.gd")
+const ParData := preload("res://scripts/core/par_data.gd")
 
 const DEFAULT_SHOT_FRAMES := 60
 const DEFAULT_TIMEOUT := 60.0
+const DEFAULT_MOVE_GAP_MS := 250
 const ALL_EVENTS := "*"
+const DIR_CHARS := "UDLR"
+const DIR_ACTIONS: Array[StringName] = [&"swipe_up", &"swipe_down", &"swipe_left", &"swipe_right"]
+const DIR_VECTORS: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+## Injected touch events carry this device id, injected key events carry INJECTED_META.
+const INJECTED_DEVICE := 7357
+const INJECTED_META := &"harness_injected"
+## The scripted drag, in base units: total length and the number of drag frames.
+const DRAG_LENGTH := 160.0
+const DRAG_STEPS := 4
+const FRAME_LOG_MS := 25.0
+## Frames to wait for a card to open after the level ends, before the run goes on without it.
+const CARD_WAIT_FRAMES := 240
 
 var _args: Dictionary = {}
+var _tool_run := false
 var _shots_dir := ""
 var _shot_on := PackedStringArray()
 var _single_shot_path := ""
@@ -15,12 +34,47 @@ var _frames := 0
 var _pending_shots := 0
 var _quit_code := -1
 
+var _watchdog_serial := 0
+var _booted := false
+var _perf_started := false
+var _perf_printed := false
+var _blocks_input := false
+var _move_gap := DEFAULT_MOVE_GAP_MS / 1000.0
+var _failures := PackedStringArray()
+
+# Per swipe.
+var _move_n := 0
+var _swipe_open := false
+var _swipe_done := false
+var _mid_marked := false
+var _paints_target := 0
+var _paints_seen := 0
+
+# Per level.
+var _level_ended := false
+var _level_status := ""
+var _card_shown := false
+var _tense_marked := false
+var _wave_marked := false
+var _defeat_wave_marked := false
+
+
+func _init() -> void:
+	_tool_run = _is_tool_run(OS.get_cmdline_args())
+	if not _tool_run:
+		_args = _parse(OS.get_cmdline_user_args())
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process(false)
-	_args = _parse(OS.get_cmdline_user_args())
+	set_process_input(false)
 	if not active():
+		return
+	var headless := DisplayServer.get_name() == "headless"
+	if headless and (has_arg("shot") or has_arg("shots")):
+		push_error("Harness: the headless renderer draws nothing, run the screenshot windowed (remove --headless)")
+		finish(1)
 		return
 	if has_arg("shots"):
 		_shots_dir = _os_path(arg("shots"))
@@ -35,9 +89,18 @@ func _ready() -> void:
 		set_process(true)
 	elif has_arg("frames"):
 		push_warning("Harness: --frames has no effect without --shot")
-	var timeout := arg("timeout", str(DEFAULT_TIMEOUT)).to_float()
-	if timeout > 0.0:
-		get_tree().create_timer(timeout, true, false, true).timeout.connect(_on_timeout)
+	_restart_watchdog()
+	_apply_setup()
+	# Deferred: PerfPanel is the next autoload and is not ready yet.
+	_begin_perf.call_deferred(false)
+	if has_arg("freeze-at"):
+		var freeze_at := maxf(arg("freeze-at").to_float(), 0.0)
+		get_tree().create_timer(freeze_at, true, false, false).timeout.connect(_on_freeze)
+	_move_gap = maxf(arg("move-gap", str(DEFAULT_MOVE_GAP_MS)).to_float(), 0.0) / 1000.0
+	_blocks_input = _scripts_input()
+	set_process_input(_blocks_input)
+	_connect_bus()
+	_run_script()
 
 
 func _process(_delta: float) -> void:
@@ -47,6 +110,13 @@ func _process(_delta: float) -> void:
 	set_process(false)
 	_capture(_single_shot_path)
 	finish(0)
+
+
+## Blocks real input in a scripted run. The harness moves itself to the end of the root, so its _input runs first.
+func _input(event: InputEvent) -> void:
+	if event.device == INJECTED_DEVICE or event.has_meta(INJECTED_META):
+		return
+	get_viewport().set_input_as_handled()
 
 
 ## True when any harness argument is present.
@@ -86,6 +156,7 @@ func finish(code: int) -> void:
 	if _quit_code >= 0:
 		return
 	_quit_code = code
+	_print_perf_summary()
 	if _pending_shots == 0:
 		get_tree().quit(code)
 
@@ -121,16 +192,405 @@ func _save_viewport(path: String) -> Error:
 	return image.save_png(path)
 
 
+# --- Setup -------------------------------------------------------------------
+
+func _apply_setup() -> void:
+	if has_arg("save"):
+		Save.use_path(_os_path(arg("save")))
+	if has_arg("unlock-all"):
+		Save.unlock_all()
+	if has_arg("reduced-motion"):
+		Save.set_setting(&"reduced_motion", true)
+	if has_arg("time-scale"):
+		Feel.set_base_time_scale(arg("time-scale").to_float())
+
+
+## The watchdog. --play-all starts it again at each level, so the limit applies to each level.
+func _restart_watchdog() -> void:
+	var timeout := arg("timeout", str(DEFAULT_TIMEOUT)).to_float()
+	if timeout <= 0.0:
+		return
+	_watchdog_serial += 1
+	var serial := _watchdog_serial
+	get_tree().create_timer(timeout, true, false, true).timeout.connect(func() -> void:
+		if serial == _watchdog_serial:
+			_on_timeout()
+	)
+
+
 func _on_timeout() -> void:
 	print("HARNESS TIMEOUT")
+	_print_perf_summary()
 	get_tree().quit(2)
+
+
+func _on_freeze() -> void:
+	print("HARNESS FREEZE ", arg("freeze-at"))
+	get_tree().paused = true
+
+
+func _scripts_input() -> bool:
+	return has_arg("moves") or has_arg("keys") or has_arg("solve") or has_arg("play-all")
+
+
+## The run starts with the harness, and starts again one time when the play starts, so the load stays out of it.
+func _begin_perf(play_start: bool) -> void:
+	if not (has_arg("perf-summary") or has_arg("frame-log")):
+		return
+	if play_start:
+		if _perf_started:
+			return
+		_perf_started = true
+	PerfPanel.begin_run(FRAME_LOG_MS if has_arg("frame-log") else 0.0)
+
+
+func _print_perf_summary() -> void:
+	if _perf_printed or not has_arg("perf-summary"):
+		return
+	_perf_printed = true
+	print("PERF_SUMMARY ", JSON.stringify(PerfPanel.run_summary()))
+
+
+# --- Bus events --------------------------------------------------------------
+
+func _connect_bus() -> void:
+	Bus.screen_changed.connect(_on_screen_changed)
+	Bus.level_ready.connect(_on_level_ready)
+	Bus.tension_changed.connect(_on_tension_changed)
+	Bus.paused_changed.connect(_on_paused_changed)
+	Bus.swipe_started.connect(_on_swipe_started)
+	Bus.tile_painted.connect(_on_tile_painted)
+	Bus.swipe_finished.connect(_on_swipe_finished)
+	Bus.swipe_ignored.connect(_on_swipe_ignored)
+	Bus.ceremony_started.connect(_on_ceremony_started)
+	Bus.ceremony_cue.connect(_on_ceremony_cue)
+	Bus.level_won.connect(_on_level_end)
+	Bus.level_lost.connect(_on_level_end)
+
+
+func _on_screen_changed(screen: StringName) -> void:
+	_booted = true
+	match screen:
+		&"home", &"levels":
+			mark(String(screen))
+		&"result":
+			_card_shown = true
+			mark("result")
+		&"defeat":
+			_card_shown = true
+			mark("defeat_card")
+
+
+func _on_level_ready(_index: int) -> void:
+	_begin_perf(true)
+	mark("level_ready")
+
+
+func _on_tension_changed(on: bool) -> void:
+	if on and not _tense_marked:
+		_tense_marked = true
+		mark("tense")
+
+
+func _on_paused_changed(on: bool) -> void:
+	if on:
+		mark("pause")
+
+
+func _on_swipe_started(outcome: Dictionary) -> void:
+	if not _swipe_open:
+		return
+	var paints: Array = outcome.get("paints", [])
+	_paints_target = maxi((paints.size() + 1) / 2, 1)
+	_paints_seen = 0
+
+
+func _on_tile_painted(_cell: int, _hue: int, _fresh: bool, _step: int) -> void:
+	if not _swipe_open or _mid_marked:
+		return
+	_paints_seen += 1
+	if _paints_seen >= _paints_target:
+		_mark_mid()
+
+
+func _on_swipe_finished(outcome: Dictionary) -> void:
+	_end_swipe(bool(outcome.get("counted", false)))
+
+
+func _on_swipe_ignored(_dir: int) -> void:
+	_end_swipe(false)
+
+
+func _on_ceremony_started(_kind: StringName) -> void:
+	_wave_marked = false
+	_defeat_wave_marked = false
+
+
+func _on_ceremony_cue(cue: StringName, _value: int) -> void:
+	if cue == &"wave_ring" and not _wave_marked:
+		_wave_marked = true
+		mark("win_wave")
+	elif cue == &"defeat_wave" and not _defeat_wave_marked:
+		_defeat_wave_marked = true
+		mark("defeat_wave")
+
+
+func _on_level_end(summary: Dictionary) -> void:
+	_level_ended = true
+	_level_status = String(summary.get("status", ""))
+	if has_arg("state-log"):
+		var result := {}
+		for key: String in ["status", "moves", "stars", "range_lo", "range_hi", "time_ms"]:
+			result[key] = summary.get(key)
+		print("RESULT ", JSON.stringify(result))
+
+
+func _mark_mid() -> void:
+	_mid_marked = true
+	mark("move_%d_mid" % _move_n)
+
+
+func _end_swipe(counted: bool) -> void:
+	if not _swipe_open:
+		return
+	if not _mid_marked:
+		_mark_mid()
+	_swipe_open = false
+	_swipe_done = true
+	if has_arg("state-log"):
+		var state := Game.snapshot()
+		var music := Music.state()
+		state["counted"] = counted
+		state["music"] = {"clip": music.get("clip"), "bpm": music.get("bpm"), "cutoff_hz": music.get("cutoff_hz")}
+		print("STATE ", JSON.stringify(state))
+	mark("move_%d_end" % _move_n)
+
+
+# --- Script ------------------------------------------------------------------
+
+func _run_script() -> void:
+	var plan := _plan()
+	if plan.is_empty():
+		return
+	while not _booted:
+		await get_tree().process_frame
+		if _stopped():
+			return
+	await get_tree().process_frame
+	if _blocks_input:
+		get_tree().root.move_child(self, -1)
+	if plan.levels.is_empty():
+		_begin_perf(true)
+		if plan.screen == "levels":
+			Game.open_levels()
+		elif Game.screen != &"home":
+			Game.open_home()
+		return
+	for i in plan.levels.size():
+		var index: int = plan.levels[i]
+		if i > 0:
+			_restart_watchdog()
+		await _play_level(index, _moves_for(plan, index), plan.keys)
+		if _stopped():
+			return
+	if plan.screen == "pause":
+		Game.set_paused(true)
+		return
+	if _failures.size() > 0:
+		for line in _failures:
+			print("HARNESS FAIL ", line)
+	if _blocks_input and not has_arg("quit-at") and not has_arg("shot"):
+		finish(1 if _failures.size() > 0 else 0)
+
+
+## {"levels": [index, ...], "moves": String, "solve": bool, "keys": bool, "screen": String}, or {} with no scripted play.
+func _plan() -> Dictionary:
+	var screen := arg("screen")
+	if screen != "" and not (screen in ["home", "levels", "pause"]):
+		return _plan_error("--screen must be home, levels or pause (got '%s')" % screen)
+	var plays := has_arg("level") or _scripts_input() or screen == "pause"
+	if screen in ["home", "levels"] and plays:
+		return _plan_error("--screen=%s does not combine with --level, --moves, --keys, --solve or --play-all" % screen)
+	if has_arg("moves") and has_arg("keys"):
+		return _plan_error("use --moves or --keys, not both")
+	var plan := {"levels": [], "moves": "", "solve": has_arg("solve") or has_arg("play-all"), "keys": has_arg("keys"), "screen": screen}
+	if not plays:
+		return plan if screen != "" else {}
+	if plan.solve and has_arg("moves"):
+		return _plan_error("--solve and --play-all play the baked solution: remove --moves")
+	if not plan.solve:
+		plan.moves = arg("moves", arg("keys")).to_upper()
+	for c in plan.moves:
+		if not DIR_CHARS.contains(c):
+			return _plan_error("the swipe list may hold only U, D, L and R (got '%s')" % plan.moves)
+	if has_arg("play-all"):
+		if has_arg("level"):
+			return _plan_error("--play-all plays each level: remove --level")
+		for i in LevelsData.LEVELS.size():
+			plan.levels.append(i)
+		return plan
+	var number := arg("level", "1").to_int()
+	if number < 1 or number > LevelsData.LEVELS.size():
+		return _plan_error("--level must be 1 to %d (got '%s')" % [LevelsData.LEVELS.size(), arg("level")])
+	plan.levels.append(number - 1)
+	return plan
+
+
+func _plan_error(message: String) -> Dictionary:
+	push_error("Harness: " + message)
+	finish(1)
+	return {}
+
+
+func _moves_for(plan: Dictionary, index: int) -> String:
+	if not plan.solve:
+		return plan.moves
+	var id: String = LevelsData.LEVELS[index].id
+	return ParData.PAR[id].solution
+
+
+func _play_level(index: int, moves: String, keys: bool) -> void:
+	_level_ended = false
+	_level_status = ""
+	_card_shown = false
+	_tense_marked = false
+	var ready_seen := [false]
+	var on_ready := func(_i: int) -> void: ready_seen[0] = true
+	Bus.level_ready.connect(on_ready)
+	Game.start_level(index)
+	while not ready_seen[0]:
+		await get_tree().process_frame
+		if _stopped():
+			Bus.level_ready.disconnect(on_ready)
+			return
+	Bus.level_ready.disconnect(on_ready)
+	for c in moves:
+		if _level_ended or _game_over():
+			break
+		await get_tree().create_timer(_move_gap, true, false, false).timeout
+		if _stopped():
+			return
+		await _swipe(DIR_CHARS.find(c), keys)
+		if _stopped():
+			return
+	var solve := has_arg("solve") or has_arg("play-all")
+	if not _game_over() and not _level_ended:
+		if solve:
+			_failures.append("level %d: the solution did not complete the level" % (index + 1))
+		await get_tree().create_timer(_move_gap, true, false, false).timeout
+		return
+	while not _level_ended:
+		await get_tree().process_frame
+		if _stopped():
+			return
+	var waited := 0
+	while not _card_shown and waited < CARD_WAIT_FRAMES:
+		await get_tree().process_frame
+		waited += 1
+		if _stopped():
+			return
+	if solve and _level_status != "won":
+		_failures.append("level %d: status %s after the solution" % [index + 1, _level_status])
+	await get_tree().create_timer(_move_gap, true, false, false).timeout
+
+
+func _swipe(dir: int, keys: bool) -> void:
+	_move_n += 1
+	_swipe_open = true
+	_swipe_done = false
+	_mid_marked = false
+	_paints_target = 1
+	_paints_seen = 0
+	if keys:
+		await _send_key(dir)
+	else:
+		await _send_drag(dir)
+	while not _swipe_done:
+		await get_tree().process_frame
+		if _stopped():
+			return
+
+
+func _send_key(dir: int) -> void:
+	var source: InputEventKey = null
+	for event in InputMap.action_get_events(DIR_ACTIONS[dir]):
+		if event is InputEventKey:
+			source = event
+			break
+	if source == null:
+		push_error("Harness: the action %s has no key event" % DIR_ACTIONS[dir])
+		finish(1)
+		return
+	for pressed in [true, false]:
+		var key := InputEventKey.new()
+		key.physical_keycode = source.physical_keycode
+		key.keycode = source.keycode if source.keycode != KEY_NONE else source.physical_keycode
+		key.pressed = pressed
+		key.set_meta(INJECTED_META, true)
+		Input.parse_input_event(key)
+		await get_tree().process_frame
+
+
+## A touch press at the center of the screen, a drag in DRAG_STEPS frames, then the release.
+func _send_drag(dir: int) -> void:
+	var to_window := get_viewport().get_final_transform()
+	var center := get_viewport().get_visible_rect().get_center()
+	var step := DIR_VECTORS[dir] * (DRAG_LENGTH / DRAG_STEPS)
+	var window_step := to_window.basis_xform(step)
+	var pos := to_window * center
+	var press := InputEventScreenTouch.new()
+	press.device = INJECTED_DEVICE
+	press.index = 0
+	press.pressed = true
+	press.position = pos
+	Input.parse_input_event(press)
+	await get_tree().process_frame
+	for i in DRAG_STEPS:
+		pos += window_step
+		var drag := InputEventScreenDrag.new()
+		drag.device = INJECTED_DEVICE
+		drag.index = 0
+		drag.position = pos
+		drag.relative = window_step
+		drag.screen_relative = window_step
+		drag.velocity = window_step * Engine.get_frames_per_second()
+		drag.screen_velocity = drag.velocity
+		Input.parse_input_event(drag)
+		await get_tree().process_frame
+	var release := InputEventScreenTouch.new()
+	release.device = INJECTED_DEVICE
+	release.index = 0
+	release.pressed = false
+	release.position = pos
+	Input.parse_input_event(release)
+	await get_tree().process_frame
+
+
+func _game_over() -> bool:
+	var status := String(Game.snapshot().get("status", ""))
+	return status == "won" or status == "lost"
+
+
+func _stopped() -> bool:
+	return _quit_code >= 0
+
+
+# --- Parse -------------------------------------------------------------------
+
+## True in a `--script` tool run: the harness then stays silent and inactive.
+static func _is_tool_run(list: PackedStringArray) -> bool:
+	for item in list:
+		if item == "--":
+			return false
+		if item == "--script" or item == "-s":
+			return true
+	return false
 
 
 static func _parse(list: PackedStringArray) -> Dictionary:
 	var out := {}
 	for item in list:
 		if not item.begins_with("--"):
-			push_warning("Harness: ignored argument '%s'" % item)
 			continue
 		var body := item.substr(2)
 		var eq := body.find("=")
