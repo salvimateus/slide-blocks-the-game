@@ -36,13 +36,14 @@ func _ready() -> void:
 	_decor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_decor.clip_contents = true
 	add_child(_decor)
-	for spec in BLOBS:
+	var tinted := _tinted_blobs()
+	for i in BLOBS.size():
+		var spec: Array = BLOBS[i]
 		var blob := TextureRect.new()
-		blob.texture = TextureBank.soft()
+		blob.texture = tinted[i]
 		blob.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		blob.stretch_mode = TextureRect.STRETCH_SCALE
 		blob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		blob.modulate = spec[2]
 		blob.size = Vector2.ONE * float(spec[1])
 		blob.pivot_offset = blob.size * 0.5
 		_decor.add_child(blob)
@@ -70,6 +71,30 @@ func set_decor_enabled(on: bool) -> void:
 			tw.play()
 		else:
 			tw.pause()
+
+
+## One texture with the soft dot in the color of each blob. The blobs keep a white modulate,
+## so they draw in one batch; a different modulate on each blob breaks the batch.
+static func _tinted_blobs() -> Array[Texture2D]:
+	var source := TextureBank.soft().get_image()
+	source.convert(Image.FORMAT_RGBA8)
+	var w := source.get_width()
+	var h := source.get_height()
+	var sheet := Image.create(w * BLOBS.size(), h, false, Image.FORMAT_RGBA8)
+	for i in BLOBS.size():
+		var tint: Color = BLOBS[i][2]
+		for y in h:
+			for x in w:
+				sheet.set_pixel(i * w + x, y, source.get_pixel(x, y) * tint)
+	var atlas := ImageTexture.create_from_image(sheet)
+	var out: Array[Texture2D] = []
+	for i in BLOBS.size():
+		var region := AtlasTexture.new()
+		region.atlas = atlas
+		region.region = Rect2(i * w, 0, w, h)
+		region.filter_clip = true
+		out.append(region)
+	return out
 
 
 func _layout() -> void:

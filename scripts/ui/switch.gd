@@ -4,14 +4,15 @@ extends Control
 const Palette := preload("res://scripts/core/palette.gd")
 const UiTheme := preload("res://scripts/ui/ui_theme.gd")
 const UiTuning := preload("res://scripts/ui/ui_tuning.gd")
+const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 const TRACK_SIZE := Vector2(96, 56)
 const KNOB_INSET := 6.0
 
 var on := false
 
-var _track_on: Panel
-var _knob: Panel
+var _track_on: Control
+var _knob: Control
 var _tween: Tween
 
 
@@ -19,20 +20,18 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	custom_minimum_size = TRACK_SIZE
 	var radius := int(TRACK_SIZE.y / 2.0)
-	var track_off := Panel.new()
-	track_off.add_theme_stylebox_override("panel", UiTheme.box(Palette.FLOOR_SHADOW, radius))
-	_track_on = Panel.new()
-	_track_on.add_theme_stylebox_override("panel", UiTheme.box(Palette.PERIWINKLE, radius, Palette.TRAY_SHADOW, 3))
-	_knob = Panel.new()
+	# Baked boxes: the three parts batch with the icons around them.
+	var track_off := UiBake.BoxFace.new(UiTheme.box(Palette.FLOOR_SHADOW, radius))
+	_track_on = UiBake.BoxFace.new(UiTheme.box(Palette.PERIWINKLE, radius, Palette.TRAY_SHADOW, 3))
 	var knob_size := TRACK_SIZE.y - KNOB_INSET * 2.0
 	var knob_box := UiTheme.box(Palette.CREAM_LIGHT, int(knob_size / 2.0))
 	knob_box.shadow_color = Color(Palette.INK, 0.25)
 	knob_box.shadow_size = 3
 	knob_box.shadow_offset = Vector2(0, 2)
-	_knob.add_theme_stylebox_override("panel", knob_box)
+	_knob = UiBake.BoxFace.new(knob_box)
 	_knob.size = Vector2(knob_size, knob_size)
 	_knob.pivot_offset = _knob.size / 2.0
-	for p: Panel in [track_off, _track_on]:
+	for p: Control in [track_off, _track_on]:
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		p.size = TRACK_SIZE
 		add_child(p)

@@ -4,8 +4,11 @@ extends Control
 ## chevrons_left, jelly_sad, jelly_happy.
 
 const Palette := preload("res://scripts/core/palette.gd")
+const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 const STAR_POINTS := 5
+## Room around the 100 x 100 box for strokes that pass its edge, as a share of the icon size.
+const BAKE_MARGIN := 0.08
 
 var kind: StringName = &"":
 	set(value):
@@ -23,6 +26,8 @@ var accent := Palette.STAR:
 		if accent != value:
 			accent = value
 			queue_redraw()
+## False for the copy that the baker draws in vector form.
+var bakeable := true
 
 
 func _init() -> void:
@@ -44,10 +49,45 @@ func _notification(what: int) -> void:
 		pivot_offset = size / 2.0
 
 
+## Asks the baker for the current look, and for the other star look of a star.
+func prewarm() -> void:
+	_fetch(kind, null)
+	if kind == &"star":
+		_fetch(&"star_empty", null)
+	elif kind == &"star_empty":
+		_fetch(&"star", null)
+
+
+func _fetch(look: StringName, waiter: CanvasItem) -> Texture2D:
+	if look == &"" or size.x <= 0.0 or size.y <= 0.0:
+		return null
+	var key := "icon|%s|%s|%s" % [look, color.to_html(), accent.to_html()]
+	return UiBake.fetch(key, _bake_rect(), _make_copy.bind(look), waiter)
+
+
+func _bake_rect() -> Rect2:
+	return Rect2(Vector2.ZERO, size).grow(maxf(size.x, size.y) * BAKE_MARGIN)
+
+
+func _make_copy(look: StringName) -> CanvasItem:
+	var copy: Control = get_script().new()
+	copy.bakeable = false
+	copy.kind = look
+	copy.color = color
+	copy.accent = accent
+	copy.size = size
+	return copy
+
+
 func _draw() -> void:
 	var s := minf(size.x, size.y) / 100.0
 	if s <= 0.0:
 		return
+	if bakeable:
+		var tex := _fetch(kind, self)
+		if tex != null:
+			draw_texture_rect(tex, _bake_rect(), false)
+			return
 	draw_set_transform((size - Vector2(100.0, 100.0) * s) / 2.0, 0.0, Vector2(s, s))
 	match kind:
 		&"pause":

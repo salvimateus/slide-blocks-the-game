@@ -23,6 +23,7 @@ const Hud := preload("res://scripts/ui/hud.gd")
 const PauseDialog := preload("res://scripts/ui/pause_dialog.gd")
 const ResultCard := preload("res://scripts/ui/result_card.gd")
 const DefeatCard := preload("res://scripts/ui/defeat_card.gd")
+const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 const ACTIONS := {
 	&"swipe_up": [KEY_UP, KEY_W],
@@ -130,6 +131,7 @@ func boot(host: Node) -> void:
 	var cover := _make_cover()
 	var cover_start := Time.get_ticks_msec()
 
+	host.add_child(UiBake.new())
 	var bank := TextureBank.new()
 	host.add_child(bank)
 	await bank.bake()
@@ -207,7 +209,7 @@ func _make_cover() -> CanvasLayer:
 
 
 ## Behind the cover: one silent play of each effect, one emit of each emitter, the scrim,
-## the HUD with its vignette, and the glyphs of all strings at each used size and weight.
+## the HUD with its vignette, the glyphs of all strings at each used size and weight, and the UI bake.
 func _warm_up(ui: CanvasLayer) -> void:
 	Sfx.warm_up()
 	var missing: PackedStringArray = Sfx.missing()
@@ -255,7 +257,47 @@ func _warm_up(ui: CanvasLayer) -> void:
 	fx.clear()
 	_board.set_scrim_now(false)
 	_board.visible = false
+	await _warm_up_bake(level, hues)
 	_hud.close()
+
+
+## Shows each screen at almost zero opacity, with sample data, so the baker draws every icon,
+## thumbnail and title letter before the cover lifts.
+func _warm_up_bake(level: RefCounted, hues: PackedInt32Array) -> void:
+	var par: Dictionary = ParData.PAR[level.id]
+	var session: RefCounted = Session.new(level, int(par.min), hues)
+	var t: Dictionary = session.thresholds
+	var sample := {
+		"level_index": level.index, "level_id": level.id, "status": &"won", "moves": t.min, "stars": 3,
+		"range_lo": t.min, "range_hi": t.three_max, "time_ms": 0, "min": t.min, "three_max": t.three_max,
+		"two_max": t.two_max, "limit": t.limit, "painted": level.floor_count, "floor": level.floor_count,
+		"new_best": true, "is_last": false, "next_unlocked": true,
+	}
+	_hud.call("_on_session_changed", session.snapshot())
+	_result.call("_fill", sample)
+	_defeat.call("_fill", sample)
+	var screens: Array[Control] = [_home, _levels, _result, _defeat, _pause]
+	for node in screens:
+		node.visible = true
+		node.modulate.a = 0.01
+	for i in 2:
+		await get_tree().process_frame
+	for node: Control in screens + [_hud]:
+		_prewarm_tree(node)
+	var frames := 0
+	while not UiBake.is_idle() and frames < 240:
+		await get_tree().process_frame
+		frames += 1
+	for node in screens:
+		node.visible = false
+		node.modulate.a = 1.0
+
+
+func _prewarm_tree(node: Node) -> void:
+	if node.has_method("prewarm"):
+		node.call("prewarm")
+	for child in node.get_children():
+		_prewarm_tree(child)
 
 
 func _register_actions() -> void:

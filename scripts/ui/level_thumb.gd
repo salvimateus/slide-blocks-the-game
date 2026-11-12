@@ -4,6 +4,7 @@ extends Control
 const Palette := preload("res://scripts/core/palette.gd")
 const LevelParser := preload("res://scripts/core/level_parser.gd")
 const Level := preload("res://scripts/core/level.gd")
+const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 const RIM := 0.32                      # rim width, as a share of the cell
 const GAP := 0.1                       # gap between tiles, as a share of the cell
@@ -17,8 +18,13 @@ var muted := false:
 			muted = value
 			queue_redraw()
 
+## False for the copy that the baker draws in vector form.
+var bakeable := true
+
 var _level: RefCounted
 var _hues := PackedInt32Array()
+var _def := {}
+var _index := 0
 
 
 func _init() -> void:
@@ -27,6 +33,8 @@ func _init() -> void:
 
 ## `def` is an entry of LevelsData. The block colors follow the level index, so a thumbnail never changes.
 func setup(def: Dictionary, index: int) -> Control:
+	_def = def
+	_index = index
 	_level = LevelParser.parse(def, index)
 	_hues.clear()
 	for b in _level.starts.size():
@@ -40,9 +48,36 @@ func _notification(what: int) -> void:
 		queue_redraw()
 
 
+## Asks the baker for both looks, muted and not.
+func prewarm() -> void:
+	_fetch(false, null)
+	_fetch(true, null)
+
+
+func _fetch(look_muted: bool, waiter: CanvasItem) -> Texture2D:
+	if _level == null or size.x <= 0.0 or size.y <= 0.0:
+		return null
+	var key := "thumb|%d|%s" % [_index, look_muted]
+	return UiBake.fetch(key, Rect2(Vector2.ZERO, size).grow(2.0), _make_copy.bind(look_muted), waiter)
+
+
+func _make_copy(look_muted: bool) -> CanvasItem:
+	var copy: Control = get_script().new()
+	copy.bakeable = false
+	copy.setup(_def, _index)
+	copy.muted = look_muted
+	copy.size = size
+	return copy
+
+
 func _draw() -> void:
 	if _level == null or _level.cells == 0:
 		return
+	if bakeable:
+		var tex := _fetch(muted, self)
+		if tex != null:
+			draw_texture_rect(tex, Rect2(Vector2.ZERO, size).grow(2.0), false)
+			return
 	var lv: Level = _level
 	var bounds := _used_bounds(lv)
 	var span := Vector2(bounds.size) + Vector2(RIM * 2.0, RIM * 2.0)

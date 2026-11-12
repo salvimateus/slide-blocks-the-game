@@ -1,6 +1,8 @@
 extends "res://scripts/ui/screen.gd"
 ## Home: the bouncing title, `Jogar` and `Fases`. The background stays clear: Game shows the live demo board behind it.
 
+const UiBake := preload("res://scripts/ui/ui_bake.gd")
+
 var _letters: Array[Label] = []
 var _play_button: Button
 var _levels_button: Button
@@ -38,6 +40,7 @@ func _init() -> void:
 			letter.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 			letter.resized.connect(func() -> void: letter.pivot_offset = letter.size * Vector2(0.5, 1.0))
 			holder.add_child(letter)
+			UiBake.flatten_label(letter)
 			_letters.append(letter)
 
 	stack.add_child(UiTheme.spacer(0, true))
