@@ -1,0 +1,50 @@
+; Engine configuration file.
+
+config_version=5
+
+[application]
+
+config/name="Trilha Jujuba"
+run/main_scene="res://scenes/main/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/show_image=false
+boot_splash/bg_color=Color(1, 0.952941, 0.890196, 1)
+config/quit_on_go_back=false
+config/use_custom_user_dir=true
+config/custom_user_dir_name="TrilhaJujuba"
+run/max_fps=60
+
+[autoload]
+
+Tuning="*res://autoload/tuning.gd"
+Bus="*res://autoload/bus.gd"
+Save="*res://autoload/save.gd"
+Feel="*res://autoload/feel.gd"
+Sfx="*res://autoload/sfx.gd"
+Music="*res://autoload/music.gd"
+Game="*res://autoload/game.gd"
+Harness="*res://autoload/harness.gd"
+PerfPanel="*res://autoload/perf_panel.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/resizable=true
+window/size/window_width_override=540
+window/size/window_height_override=960
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_mouse_from_touch=true
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(1, 0.952941, 0.890196, 1)

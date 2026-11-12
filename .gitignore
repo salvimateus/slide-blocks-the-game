@@ -1,0 +1,11 @@
+# Godot
+.godot/
+/android/
+*.translation
+export_credentials.cfg
+
+# Local outputs
+build/*
+!build/.gdignore
+shots/*
+!shots/.gdignore
