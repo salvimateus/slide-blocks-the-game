@@ -4,7 +4,7 @@ extends RefCounted
 # Buses.
 const MASTER_DB := 0.0
 const SFX_DB := -8.0
-const MUSIC_DB := -7.0
+const MUSIC_DB := -13.02
 const LIMITER_CEILING_DB := -1.0   # a safety net: normal play stays below it
 
 # Effects.
