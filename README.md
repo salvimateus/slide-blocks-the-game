@@ -113,7 +113,8 @@ The jellies keep the same colors in the two themes. Tap the moon or the sun at t
 ### One-jelly mode
 
 - Turn it on with the "1 jelly" switch on the level select screen, or with the "One jelly" switch in the pause dialog.
-- Each level with two or more jellies becomes a new puzzle with one jelly. Some floor tiles become walls.
+- Each level with two or more jellies becomes a new puzzle with one jelly. Some floor tiles become walls, and on some levels an obstacle becomes floor.
+- From each reachable position, the jelly can always paint the full floor.
 - Levels 1 to 3 have one jelly already, so they do not change.
 - The mode has its own minimum moves, its own stars and its own records.
 - When you change the mode in the pause dialog, the level starts again when you continue.

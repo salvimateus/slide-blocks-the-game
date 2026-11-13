@@ -111,7 +111,7 @@ func _run(levels_path: String, write: bool) -> int:
 	return 0
 
 
-# The one-block version of each level with two or more blocks, in level order: [id, keep, walls, min, solution].
+# The one-block version of each level with two or more blocks, in level order: [id, keep, open text, walls, min, solution].
 func _solo_versions(levels: Array, failures: PackedStringArray) -> Array:
 	var solo := []
 	var multi := 0
@@ -127,21 +127,27 @@ func _solo_versions(levels: Array, failures: PackedStringArray) -> Array:
 		var ms := Time.get_ticks_msec() - t0
 		if v.is_empty():
 			print("%s SOLO none ms=%d" % [label, ms])
+			if SoloSearch.PINNED.has(def.id):
+				failures.append("%s SOLO: the pinned version fails a check" % label)
 			continue
-		var version = LevelParser.parse(SoloVariant.make_def(def, v.keep, v.walls), index)
+		var version = LevelParser.parse(SoloVariant.make_def(def, v.keep, v.walls, v.open), index)
 		var s := Solver.solve(version) if version.errors.is_empty() else {}
 		if not version.errors.is_empty() or version.starts.size() != 1 or s.is_empty() or s.min != v.min:
 			failures.append("%s SOLO: the version does not match the search" % label)
+		elif Solver.has_trap(version):
+			failures.append("%s SOLO: a trap (a reachable state that cannot paint the full floor)" % label)
 		var t := ScoreRules.thresholds(v.min, index)
 		var r3 := ScoreRules.range_for(3, t)
 		var r2 := ScoreRules.range_for(2, t)
 		var r1 := ScoreRules.range_for(1, t)
 		var cells := PackedStringArray(v.walls.map(func(c: int) -> String: return str(c)))
 		var walls := ",".join(cells)
-		print("%s SOLO keep=%d walls=[%s] floor=%d min=%d 3*=%d-%d 2*=%d-%d 1*=%d-%d limit=%d solution=%s states=%d searched=%d deadend=%d ms=%d" % [
-			label, v.keep, walls, v.floor, v.min, r3.x, r3.y, r2.x, r2.y, r1.x, r1.y, t.limit, v.solution, v.states, v.searched,
+		var open_cells := PackedStringArray(v.open.map(func(c: int) -> String: return str(c)))
+		print("%s SOLO keep=%d open=[%s] walls=[%s] floor=%d min=%d 3*=%d-%d 2*=%d-%d 1*=%d-%d limit=%d solution=%s states=%d searched=%d deadend=%d ms=%d" % [
+			label, v.keep, ",".join(open_cells), walls, v.floor, v.min, r3.x, r3.y, r2.x, r2.y, r1.x, r1.y, t.limit, v.solution, v.states, v.searched,
 			int(v.dead_end), ms])
-		solo.append([def.id, v.keep, ", ".join(cells), v.min, v.solution])
+		var open_text := "\"open\": [%s], " % ", ".join(open_cells) if not v.open.is_empty() else ""
+		solo.append([def.id, v.keep, open_text, ", ".join(cells), v.min, v.solution])
 	print("SOLO_COUNT %d/%d" % [solo.size(), multi])
 	return solo
 
@@ -152,8 +158,9 @@ func _par_text(par: Array, solo: Array) -> String:
 		text += "\t\"%s\": {\"min\": %d, \"solution\": \"%s\"},\n" % entry
 	text += "}\n\n"
 	text += "# The one-block version of each level with two or more blocks: the kept block id of the normal map,\n"
-	text += "# the wall cells (index y * cols + x of the map, ascending) and the par of that version.\n"
+	text += "# the obstacle cells that become floor (when any), the wall cells (index y * cols + x of the map, ascending)\n"
+	text += "# and the par of that version.\n"
 	text += "const SOLO := {\n"
 	for entry in solo:
-		text += "\t\"%s\": {\"keep\": %d, \"walls\": [%s], \"min\": %d, \"solution\": \"%s\"},\n" % entry
+		text += "\t\"%s\": {\"keep\": %d, %s\"walls\": [%s], \"min\": %d, \"solution\": \"%s\"},\n" % entry
 	return text + "}\n"

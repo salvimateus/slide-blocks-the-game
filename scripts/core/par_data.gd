@@ -30,7 +30,8 @@ const PAR := {
 }
 
 # The one-block version of each level with two or more blocks: the kept block id of the normal map,
-# the wall cells (index y * cols + x of the map, ascending) and the par of that version.
+# the obstacle cells that become floor (when any), the wall cells (index y * cols + x of the map, ascending)
+# and the par of that version.
 const SOLO := {
 	"l4": {"keep": 1, "walls": [21], "min": 20, "solution": "ULURLDDLRULDLDRDURUD"},
 	"l5": {"keep": 2, "walls": [68], "min": 18, "solution": "UULDDLULDLRURDLUDL"},
@@ -47,10 +48,10 @@ const SOLO := {
 	"l16": {"keep": 4, "walls": [12, 18, 19, 20, 31, 42, 58, 69, 70, 80, 81, 85], "min": 17, "solution": "URDRDULULDLUDRDLU"},
 	"l17": {"keep": 1, "walls": [13, 33, 48, 54, 55], "min": 17, "solution": "ULULDRURDLDLDURDR"},
 	"l18": {"keep": 2, "walls": [14, 47, 75], "min": 23, "solution": "DLULURURULDLURLDRURLULD"},
-	"l19": {"keep": 2, "walls": [10, 36, 37, 44, 46], "min": 21, "solution": "LRDLDLRULRULULDLRULUL"},
-	"l20": {"keep": 2, "walls": [23, 25, 37, 52, 79, 81], "min": 28, "solution": "UDRULULULUDRDLRULURLULDRDURD"},
+	"l19": {"keep": 1, "walls": [8, 36, 37, 40, 44, 50, 51, 78], "min": 24, "solution": "DLDLULRDLDRURULULULDLRUL"},
+	"l20": {"keep": 4, "walls": [17, 25, 40, 52, 67, 79, 81], "min": 28, "solution": "ULDRDRDRDRDULULDRDLRUDLUDRUL"},
 	"l21": {"keep": 2, "walls": [49, 81, 83], "min": 21, "solution": "LRDLDLRLULDLDULRDRURL"},
-	"l22": {"keep": 1, "walls": [22, 23, 25, 51, 85], "min": 13, "solution": "LDURURDLDURDR"},
+	"l22": {"keep": 1, "open": [58], "walls": [14, 38, 51, 85], "min": 20, "solution": "LULDURLDRDULDLRULUDL"},
 	"l23": {"keep": 1, "walls": [49, 73, 83], "min": 25, "solution": "UDRDRDLDDULULURRDRRDRRDLD"},
-	"l24": {"keep": 4, "walls": [29, 38, 41, 45, 70], "min": 25, "solution": "LRDLDLDURDULRDRDRURDRLDUR"},
+	"l24": {"keep": 4, "walls": [17, 38, 41, 45, 70, 72], "min": 26, "solution": "LRDLDLDURDULRDRDRURDRLURUR"},
 }

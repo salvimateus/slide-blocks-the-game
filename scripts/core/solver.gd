@@ -98,6 +98,77 @@ static func has_dead_end(level: Level) -> bool:
 	return back.size() != nodes.size()
 
 
+# True when a reachable state (positions, paint mask) can no longer reach a full paint.
+# A dead end is harmless when no such state exists. Above the cap it returns true, to stay on the safe side.
+static func has_trap(level: Level, cap: int = 3000000) -> bool:
+	var full := (1 << level.floor_count) - 1
+	var mask0 := 0
+	for p in level.starts:
+		mask0 |= 1 << level.floor_bit[p]
+	var keys := PackedInt64Array([pack(level.starts)])
+	var masks := PackedInt64Array([mask0])
+	var index_of := {keys[0]: {mask0: 0}}
+	var succ := PackedInt32Array()
+	var cache := {}
+	var head := 0
+	while head < keys.size():
+		var m := masks[head]
+		var tr := _transitions(level, cache, keys[head])
+		for dir in 4:
+			var nk := tr[dir * 2]
+			if nk < 0 or m == full:
+				succ.append(-1)
+				continue
+			var nm := m | tr[dir * 2 + 1]
+			var bucket: Dictionary = index_of.get(nk, {})
+			if bucket.is_empty():
+				index_of[nk] = bucket
+			var j: int = bucket.get(nm, -1)
+			if j < 0:
+				if keys.size() >= cap:
+					return true
+				j = keys.size()
+				bucket[nm] = j
+				keys.append(nk)
+				masks.append(nm)
+			succ.append(j)
+		head += 1
+	# Reverse edges in CSR form, then a backward search from the full-paint states.
+	var n := keys.size()
+	var first := PackedInt32Array()
+	first.resize(n + 1)
+	for j in succ:
+		if j >= 0:
+			first[j + 1] += 1
+	for i in n:
+		first[i + 1] += first[i]
+	var fill := first.duplicate()
+	var rev := PackedInt32Array()
+	rev.resize(first[n])
+	for e in succ.size():
+		var j := succ[e]
+		if j >= 0:
+			@warning_ignore("integer_division")
+			rev[fill[j]] = e / 4
+			fill[j] += 1
+	var good := PackedByteArray()
+	good.resize(n)
+	var stack := PackedInt32Array()
+	for i in n:
+		if masks[i] == full:
+			good[i] = 1
+			stack.append(i)
+	while not stack.is_empty():
+		var s := stack[stack.size() - 1]
+		stack.resize(stack.size() - 1)
+		for e in range(first[s], first[s + 1]):
+			var p := rev[e]
+			if good[p] == 0:
+				good[p] = 1
+				stack.append(p)
+	return good.find(0) >= 0
+
+
 # True when a lone block that starts on a deflector, in any direction, hits the loop guard.
 static func has_loop(level: Level) -> bool:
 	var pos := PackedInt32Array([0])

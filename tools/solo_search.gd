@@ -10,20 +10,27 @@ const SlideRules := preload("res://scripts/core/slide_rules.gd")
 const SoloVariant := preload("res://scripts/core/solo_variant.gd")
 
 const SEARCHED_WALLS := 2
+const LAST_TIER_SEARCHED_WALLS := 5
 const MAX_WALL_SHARE := 0.4
 const MIN_MOVES := 6
+# A fixed version for a level whose searched version is too easy: the search does not reach it, because it needs
+# more searched walls, or obstacle cells ("open") that turn into floor. It must pass the same checks.
+const PINNED := {"l22": {"keep": 1, "open": [58], "walls": [14, 38, 51, 85]}}
 
 
 ## The one-block version of a map with two or more blocks, or {} when no version passes.
-## A version with a dead end is a last resort: only when no candidate of the map is free of dead ends.
-## {"keep": int, "walls": Array (ascending cell indices), "min": int, "solution": String, "states": int, "floor": int,
-## "searched": int, "dead_end": bool}
+## A version with a dead end is a last resort: only when no candidate of the map is free of dead ends,
+## and only with no trap (a reachable state that can no longer paint the full floor).
+## {"keep": int, "walls": Array (ascending cell indices), "open": Array (ascending cell indices), "min": int,
+## "solution": String, "states": int, "floor": int, "searched": int, "dead_end": bool}
 static func search(def: Dictionary, index: int) -> Dictionary:
-	var strict := _search(def, index, false)
-	return strict if not strict.is_empty() else _search(def, index, true)
+	if PINNED.has(def.id):
+		return _pinned(def, index)
+	var strict := _search(def, index, false, SEARCHED_WALLS)
+	return strict if not strict.is_empty() else _search(def, index, true, LAST_TIER_SEARCHED_WALLS)
 
 
-static func _search(def: Dictionary, index: int, allow_dead_end: bool) -> Dictionary:
+static func _search(def: Dictionary, index: int, allow_dead_end: bool, searched_walls: int) -> Dictionary:
 	var base: Level = LevelParser.parse(def, index)
 	var n := base.starts.size()
 	if not base.errors.is_empty() or n < 2:
@@ -52,7 +59,7 @@ static func _search(def: Dictionary, index: int, allow_dead_end: bool) -> Dictio
 			if lv.floor_cells[c] == 1 and lv.deflector[c] == Level.NONE and c != lv.starts[0] and not removed.has(c):
 				candidates.append(c)
 		var m := candidates.size()
-		for d in range(0, mini(SEARCHED_WALLS, m) + 1):
+		for d in range(0, mini(searched_walls, m) + 1):
 			var combo := PackedInt32Array()
 			for i in d:
 				combo.append(i)
@@ -73,13 +80,13 @@ static func _search(def: Dictionary, index: int, allow_dead_end: bool) -> Dictio
 						if wall_mask & (1 << bit):
 							walls.append(cell_of_bit[bit])
 					walls.sort()
-					var found := _validate(def, k + 1, walls, index, allow_dead_end)
+					var found := _validate(def, k + 1, walls, [], index, allow_dead_end)
 					if not found.is_empty():
 						var on_starts := 0
 						for c in walls:
 							if removed.has(c):
 								on_starts += 1
-						found.merge({"keep": k + 1, "walls": walls, "searched": d, "on_starts": on_starts})
+						found.merge({"keep": k + 1, "walls": walls, "open": [], "searched": d, "on_starts": on_starts})
 						if total < best_total:
 							best_total = total
 							best.clear()
@@ -121,15 +128,25 @@ static func _reach(lv: Level) -> int:
 	return mask
 
 
-static func _validate(def: Dictionary, keep: int, walls: Array, index: int, allow_dead_end: bool) -> Dictionary:
-	var v: Level = LevelParser.parse(SoloVariant.make_def(def, keep, walls), index)
+# The PINNED version of the level, or {} when it fails a check.
+static func _pinned(def: Dictionary, index: int) -> Dictionary:
+	var pin: Dictionary = PINNED[def.id]
+	var found := _validate(def, pin.keep, pin.walls, pin.open, index, true)
+	if found.is_empty():
+		return {}
+	found.merge({"keep": pin.keep, "walls": pin.walls, "open": pin.open, "searched": -1})
+	return found
+
+
+static func _validate(def: Dictionary, keep: int, walls: Array, opened: Array, index: int, allow_dead_end: bool) -> Dictionary:
+	var v: Level = LevelParser.parse(SoloVariant.make_def(def, keep, walls, opened), index)
 	if not v.errors.is_empty() or Solver.has_loop(v):
 		return {}
 	var s := Solver.solve(v)
 	if s.is_empty() or s.min < MIN_MOVES:
 		return {}
 	var dead_end := Solver.has_dead_end(v)
-	if dead_end and not allow_dead_end:
+	if dead_end and (not allow_dead_end or Solver.has_trap(v)):
 		return {}
 	return {"min": s.min, "solution": s.solution, "states": s.states, "floor": v.floor_count, "dead_end": dead_end}
 

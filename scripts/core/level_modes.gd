@@ -24,7 +24,7 @@ static func def_for(index: int, solo: bool) -> Dictionary:
 	var def: Dictionary = LevelsData.LEVELS[index]
 	if solo and ParData.SOLO.has(def.id):
 		var entry: Dictionary = ParData.SOLO[def.id]
-		return SoloVariant.make_def(def, entry.keep, entry.walls)
+		return SoloVariant.make_def(def, entry.keep, entry.walls, entry.get("open", []))
 	return def
 
 
