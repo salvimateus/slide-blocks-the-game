@@ -136,6 +136,17 @@ func build(p_level: RefCounted, p_hues: PackedInt32Array) -> void:
 	_scrim.color.a = 0.0
 
 
+## Draws the tray and the scrim again in the current Palette colors and keeps the state of the board.
+## The tiles, rails, obstacles and blocks come from the TextureBank atlas, so TextureBank.rebake() changes them.
+func refresh_theme() -> void:
+	_scrim.color = Color(Palette.SCRIM, _scrim.color.a)
+	if level == null:
+		return
+	for child in _tray.get_children():
+		child.free()
+	_build_tray(_solid_cells())
+
+
 ## Scales and centers the board into `rect`, in the coordinates of the parent.
 func fit(rect: Rect2) -> void:
 	var content := content_size()
@@ -545,7 +556,7 @@ func _build_tray(solid: PackedByteArray) -> void:
 	for poly in _union_polygons(solid):
 		var rim := _smooth(poly, BoardTuning.WELL_PAD + BoardTuning.RIM, BoardTuning.RIM_ROUND_CONVEX, BoardTuning.RIM_ROUND_CONCAVE)
 		var well := _smooth(poly, BoardTuning.WELL_PAD, BoardTuning.WELL_ROUND_CONVEX, BoardTuning.WELL_ROUND_CONCAVE)
-		_poly(rim, Color(Palette.INK, 0.13), Vector2(0, BoardTuning.RIM_SHADOW))
+		_poly(rim, Color(Palette.SHADE, 0.13), Vector2(0, BoardTuning.RIM_SHADOW))
 		_poly(rim, Palette.TRAY_SHADOW, Vector2(0, BoardTuning.RIM_LIP))
 		_poly(rim, Palette.TRAY_HIGHLIGHT, Vector2.ZERO)
 		_poly(_offset(rim, -4.0), Palette.PERIWINKLE, Vector2(0, 4))

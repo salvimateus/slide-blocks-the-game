@@ -1,11 +1,13 @@
 extends "res://scripts/ui/screen.gd"
-## The pause dialog: continue, levels, four settings, the one-jelly option and the language, and the font credit, on a dim scrim.
+## The pause dialog: continue, levels, four settings, the one-jelly option, the language and the dark mode,
+## and the font credit, on a dim scrim.
 ## It runs while the tree is paused. A long press on its title opens the performance panel.
 ## open() takes {"solo": the one-jelly state of the level (&"single", &"ready" or &"none"), "mode_solo": the mode in play};
 ## the note says when the level starts again on resume, or that the level has no one-jelly version.
 
 const ToggleRow := preload("res://scripts/ui/toggle_row.gd")
 const LanguageRow := preload("res://scripts/ui/language_row.gd")
+const ThemeRow := preload("res://scripts/ui/theme_row.gd")
 
 const SETTINGS: Array = [
 	[&"music", "pause_music", &"music"],
@@ -85,6 +87,9 @@ func _init() -> void:
 	var language: Button = LanguageRow.new().setup_language()
 	rows.add_child(language)
 	_rows.append(language)
+	var theme_row: Button = ThemeRow.new().setup_theme()
+	rows.add_child(theme_row)
+	_rows.append(theme_row)
 
 	var credit := UiTheme.paragraph("", UiTuning.SIZE_TINY, UiTuning.WEIGHT_BODY, Palette.INK_SOFT)
 	Strings.bind(credit, "font_credit")

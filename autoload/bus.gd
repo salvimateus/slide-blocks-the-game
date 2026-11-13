@@ -28,6 +28,10 @@ signal music_beat(index: int, tense: bool)
 signal setting_changed(key: StringName, value: bool)
 ## Save, after the UI text changes to a different locale.
 signal locale_changed(locale: StringName)
+## Save, when Save.theme() changes. Game then applies it to the Palette and builds the visuals again.
+signal theme_changed(theme: StringName)
+## Game, when the screen shows the new theme and the cover is gone.
+signal theme_applied(theme: StringName)
 ## Game, when a level starts again from its first state (restart button, R key or retry).
 signal level_restarted(index: int)
 ## Game, when a random level is ready, just before level_loaded.

@@ -16,8 +16,25 @@ extends Node
 ## Replay: --replay plays the replay of the game when its card is at rest (needs --level or --random, not --play-all),
 ## and the run goes on after it. --replay-stop-at=<n> stops it at move n. Marks `replay_start`, `replay_move_<n>` (from 0)
 ## and `replay_end`, after the line `HARNESS REPLAY completed=<bool> matched=<bool>`.
+##
+## Theme arguments:
+##   --theme=<light|dark>         forces the color theme for this run; the save keeps its stored choice.
+##   --switch-theme=<light|dark>  at the event of --switch-on, stores this theme through Save.set_theme, as the
+##                                dark mode row of the pause dialog does. The game builds its visuals again and,
+##                                with the screen at rest, marks the event `theme_switched`. It writes the choice
+##                                into the save file, so it needs --save.
+##   --switch-on=<event>          the event for --switch-theme (default: home). For example pause, levels, level_ready.
+##
+## Tap arguments:
+##   --tap=<button>               at the event of --tap-on, sends a touch press and release at the center of the
+##                                button, through the real input path (the touch and its emulated mouse events).
+##                                Buttons: theme (the theme button of Home). After a tap on it, the switch marks
+##                                `theme_switched`. The event `tap` is marked after the release. --tap=theme writes
+##                                the theme into the save file, so it needs --save.
+##   --tap-on=<event>             the event for --tap (default: home).
 
 const LevelsData := preload("res://scripts/core/levels_data.gd")
+const Palette := preload("res://scripts/core/palette.gd")
 
 const DEFAULT_SHOT_FRAMES := 60
 const DEFAULT_TIMEOUT := 60.0
@@ -48,6 +65,13 @@ var _single_shot_frames := 0
 var _frames := 0
 var _pending_shots := 0
 var _quit_code := -1
+var _theme_switch_done := false
+## True from the --switch-theme call until the game shows the new theme. The scripted swipes wait for it,
+## because the game ignores swipes behind the theme cover.
+var _theme_switching := false
+var _tap_done := false
+## True while the harness sends a tap, so _input lets the emulated mouse events of the injected touch pass.
+var _tapping := false
 
 var _watchdog_serial := 0
 var _booted := false
@@ -132,6 +156,8 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event.device == INJECTED_DEVICE or event.has_meta(INJECTED_META):
 		return
+	if _tapping and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	get_viewport().set_input_as_handled()
 
 
@@ -165,6 +191,20 @@ func mark(event: String) -> void:
 		shot(event)
 	if has_arg("quit-at") and arg("quit-at") == event:
 		finish(0)
+	if _quit_code >= 0:
+		return
+	if not _tap_done and has_arg("tap") and arg("tap-on", "home") == event:
+		_tap_done = true
+		_send_tap(StringName(arg("tap")))
+	if not _theme_switch_done and has_arg("switch-theme") and arg("switch-on", "home") == event:
+		_theme_switch_done = true
+		var target := StringName(arg("switch-theme"))
+		var same := Save.theme() == target
+		_theme_switching = not same
+		Save.set_theme(target)
+		# The colors do not change, so the game builds nothing and sends no theme_applied.
+		if same:
+			mark("theme_switched")
 
 
 ## Quits with `code` once the pending screenshots are saved.
@@ -226,6 +266,17 @@ func _apply_setup() -> void:
 		Game.set_random_hold(arg("random-hold").to_int())
 	if has_arg("time-scale"):
 		Feel.set_base_time_scale(arg("time-scale").to_float())
+	for key in ["theme", "switch-theme"]:
+		if has_arg(key) and not Palette.THEMES.has(StringName(arg(key))):
+			push_error("Harness: --%s must be light or dark (got '%s')" % [key, arg(key)])
+			finish(1)
+			return
+	if has_arg("theme"):
+		Save.force_theme(StringName(arg("theme")))
+	if has_arg("tap-on") and not has_arg("tap"):
+		push_warning("Harness: --tap-on has no effect without --tap")
+	if has_arg("switch-on") and not has_arg("switch-theme"):
+		push_warning("Harness: --switch-on has no effect without --switch-theme")
 
 
 ## The watchdog. --play-all starts it again at each level, so the limit applies to each level.
@@ -293,6 +344,7 @@ func _connect_bus() -> void:
 	Bus.replay_started.connect(_on_replay_started)
 	Bus.replay_step.connect(_on_replay_step)
 	Bus.replay_finished.connect(_on_replay_finished)
+	Bus.theme_applied.connect(_on_theme_applied)
 
 
 func _on_screen_changed(screen: StringName) -> void:
@@ -308,6 +360,11 @@ func _on_screen_changed(screen: StringName) -> void:
 			mark("defeat_card")
 		&"loading":
 			mark("loading")
+
+
+func _on_theme_applied(_theme: StringName) -> void:
+	_theme_switching = false
+	mark("theme_switched")
 
 
 func _on_level_ready(_index: int) -> void:
@@ -473,6 +530,10 @@ func _plan() -> Dictionary:
 		return _plan_error("--set-lang writes the language into the save: add --save=<file>")
 	if has_arg("solo") and not has_arg("save"):
 		return _plan_error("--solo writes the one-jelly setting into the save: add --save=<file>")
+	if has_arg("switch-theme") and not has_arg("save"):
+		return _plan_error("--switch-theme writes the theme into the save: add --save=<file>")
+	if arg("tap") == "theme" and not has_arg("save"):
+		return _plan_error("--tap=theme writes the theme into the save: add --save=<file>")
 	var random := has_arg("random")
 	if random and (has_arg("level") or has_arg("play-all") or has_arg("screen")):
 		return _plan_error("--random does not combine with --level, --play-all or --screen")
@@ -573,6 +634,8 @@ func _play_level(start: Callable, label: String, plan: Dictionary) -> void:
 		if _level_ended or _game_over():
 			break
 		await get_tree().create_timer(_move_gap, true, false, false).timeout
+		while _theme_switching and not _stopped():
+			await get_tree().process_frame
 		if _stopped():
 			return
 		await _swipe(DIR_CHARS.find(c), keys)
@@ -654,6 +717,30 @@ func _send_key(dir: int) -> void:
 		key.set_meta(INJECTED_META, true)
 		Input.parse_input_event(key)
 		await get_tree().process_frame
+
+
+## A touch press and release at the center of a button that Game.button_rect names.
+## The `theme` button switches the theme and marks `theme_switched`.
+func _send_tap(button: StringName) -> void:
+	var rect: Rect2 = Game.button_rect(button)
+	if rect.size == Vector2.ZERO:
+		push_error("Harness: --tap=%s: the button is not on screen" % button)
+		finish(1)
+		return
+	if button == &"theme":
+		_theme_switching = true
+	var pos := get_viewport().get_final_transform() * rect.get_center()
+	_tapping = true
+	for pressed in [true, false]:
+		var touch := InputEventScreenTouch.new()
+		touch.device = INJECTED_DEVICE
+		touch.index = 0
+		touch.pressed = pressed
+		touch.position = pos
+		Input.parse_input_event(touch)
+		await get_tree().process_frame
+	_tapping = false
+	mark("tap")
 
 
 ## A touch press at the center of the screen, a drag in DRAG_STEPS frames, then the release.

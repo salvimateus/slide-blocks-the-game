@@ -21,7 +21,9 @@ func setup_toggle(setting_key: StringName, text_value: String, icon_kind: String
 	content.add_theme_constant_override("margin_right", 12)
 	var row := UiTheme.hbox(8 if compact else 18)
 	content.add_child(row)
-	var pic := Icon.new().setup(icon_kind, 36 if compact else 40, Palette.INK, Palette.MINT_LIGHT)
+	# A jelly icon keeps a light body with dark eyes in both themes.
+	var accent := Palette.JELLY_FACE if String(icon_kind).begins_with("jelly") else Palette.MINT_LIGHT
+	var pic := Icon.new().setup(icon_kind, 36 if compact else 40, Palette.INK, accent)
 	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(pic)
 	if compact:

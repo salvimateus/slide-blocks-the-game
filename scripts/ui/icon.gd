@@ -1,7 +1,7 @@
 extends Control
 ## A vector icon. It draws one time in a 100 x 100 box scaled to the control, and again only when its look changes.
 ## Kinds: pause, restart, lock, star, star_empty, speaker, music, vibrate, motion, back, play, grid, knob, touch,
-## chevrons_left, jelly_sad, jelly_happy, globe, replay, dice.
+## chevrons_left, jelly_sad, jelly_happy, globe, replay, dice, moon, sun.
 
 const Palette := preload("res://scripts/core/palette.gd")
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
@@ -167,6 +167,13 @@ func _draw() -> void:
 			_rbox(face.grow(-3.5), 12.5, accent)
 			for p: Vector2 in [Vector2(34, 34), Vector2(66, 34), Vector2(50, 50), Vector2(34, 66), Vector2(66, 66)]:
 				draw_circle(p, 7, color, true, -1.0, true)
+		&"moon":
+			_draw_moon()
+		&"sun":
+			draw_circle(Vector2(50, 50), 19, color, true, -1.0, true)
+			for i in 8:
+				var dir := Vector2.from_angle(i * PI / 4.0)
+				_round_line(Vector2(50, 50) + dir * 31.0, Vector2(50, 50) + dir * 42.0, 8)
 
 
 func _draw_restart() -> void:
@@ -221,21 +228,42 @@ func _draw_music() -> void:
 	_poly([Vector2(37, 22), Vector2(83, 12), Vector2(83, 28), Vector2(37, 38)], color)
 
 
+# A crescent and a small four-point star.
+func _draw_moon() -> void:
+	var disc := _circle_points(Vector2(46, 54), 36.0)
+	var bite := _circle_points(Vector2(66, 38), 30.0)
+	for part in Geometry2D.clip_polygons(disc, bite):
+		_poly(part, color)
+	var star := PackedVector2Array()
+	for i in 8:
+		var a := -PI / 2.0 + i * PI / 4.0
+		star.append(Vector2(78, 66) + Vector2(cos(a), sin(a)) * (13.0 if i % 2 == 0 else 4.5))
+	_poly(star, color)
+
+
+func _circle_points(c: Vector2, r: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for i in 40:
+		var a := TAU * i / 40.0
+		points.append(c + Vector2(cos(a), sin(a)) * r)
+	return points
+
+
 func _draw_jelly(happy: bool) -> void:
 	var outline := Palette.OUTLINE[0]
 	_rbox(Rect2(8, 16, 84, 78), 30, outline)
 	_rbox(Rect2(12, 14, 76, 72), 27, accent)
 	draw_arc(Vector2(34, 36), 12, PI * 1.05, PI * 1.5, 10, Color(1, 1, 1, 0.75), 5, true)
 	if happy:
-		draw_arc(Vector2(37, 50), 7, PI * 1.1, PI * 1.9, 10, Palette.INK, 5, true)
-		draw_arc(Vector2(63, 50), 7, PI * 1.1, PI * 1.9, 10, Palette.INK, 5, true)
-		draw_arc(Vector2(50, 60), 9, 0.25, PI - 0.25, 12, Palette.INK, 5, true)
+		draw_arc(Vector2(37, 50), 7, PI * 1.1, PI * 1.9, 10, Palette.SHADE, 5, true)
+		draw_arc(Vector2(63, 50), 7, PI * 1.1, PI * 1.9, 10, Palette.SHADE, 5, true)
+		draw_arc(Vector2(50, 60), 9, 0.25, PI - 0.25, 12, Palette.SHADE, 5, true)
 		return
-	draw_circle(Vector2(37, 52), 6.5, Palette.INK, true, -1.0, true)
-	draw_circle(Vector2(63, 52), 6.5, Palette.INK, true, -1.0, true)
+	draw_circle(Vector2(37, 52), 6.5, Palette.SHADE, true, -1.0, true)
+	draw_circle(Vector2(63, 52), 6.5, Palette.SHADE, true, -1.0, true)
 	_round_line(Vector2(27, 43), Vector2(40, 37), 4)
 	_round_line(Vector2(73, 43), Vector2(60, 37), 4)
-	draw_arc(Vector2(50, 76), 9, PI * 1.15, PI * 1.85, 12, Palette.INK, 5, true)
+	draw_arc(Vector2(50, 76), 9, PI * 1.15, PI * 1.85, 12, Palette.SHADE, 5, true)
 
 
 func _rbox(rect: Rect2, radius: float, c: Color) -> void:

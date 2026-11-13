@@ -1,6 +1,8 @@
 extends Node
 ## Bakes every board visual one time into one atlas texture, then serves regions of it.
 ## Use: add an instance to the tree, `await bank.bake()`, then call the static getters from any script.
+## After a Palette theme change, `await bank.rebake()` draws the atlas again into the same textures,
+## so each sprite, region and emitter that holds one shows the new colors with no change.
 ## The bake draws in a SubViewport, then a second pass turns the premultiplied result into straight alpha.
 
 signal baked
@@ -107,6 +109,15 @@ static func soft() -> Texture2D:
 func bake() -> void:
 	if is_baked():
 		return
+	await _bake()
+
+
+## Draws the atlas again in the current Palette colors, into the textures of the first bake.
+func rebake() -> void:
+	await _bake()
+
+
+func _bake() -> void:
 	if DisplayServer.get_name() == "headless":
 		var blank := Image.create(ATLAS_SIZE.x, ATLAS_SIZE.y, false, Image.FORMAT_RGBA8)
 		blank.fill(Color.WHITE)
@@ -161,20 +172,33 @@ static func _layout() -> Dictionary:
 	return out
 
 
+## The first store makes the textures. A later store writes into them, because nodes and regions hold them.
 static func _store(image: Image) -> void:
-	_regions = _layout()
-	_cache.clear()
-	_standalone.clear()
+	var again := _atlas != null
+	if not again:
+		_regions = _layout()
+		_cache.clear()
+		_standalone.clear()
 	if image.has_mipmaps():
 		image.clear_mipmaps()
 	image.fix_alpha_edges()
 	for key in STANDALONE:
 		var part := image.get_region(_regions[key])
 		part.generate_mipmaps()
-		_standalone[key] = ImageTexture.create_from_image(part)
-	_pattern = ImageTexture.create_from_image(image.get_region(_regions[&"pattern"]))
+		if again:
+			(_standalone[key] as ImageTexture).update(part)
+		else:
+			_standalone[key] = ImageTexture.create_from_image(part)
+	var pattern_image := image.get_region(_regions[&"pattern"])
+	if again:
+		(_pattern as ImageTexture).update(pattern_image)
+	else:
+		_pattern = ImageTexture.create_from_image(pattern_image)
 	image.generate_mipmaps()
-	_atlas = ImageTexture.create_from_image(image)
+	if again:
+		(_atlas as ImageTexture).update(image)
+	else:
+		_atlas = ImageTexture.create_from_image(image)
 
 
 static func _make_soft() -> Texture2D:
@@ -220,14 +244,14 @@ class Painter extends Node2D:
 			_rail(c)
 		elif key == "block_shadow":
 			for i in 5:
-				_ellipse(c, 54.0 - i * 5.0, 15.0 - i * 2.0, Color(Pal.INK, 0.065))
+				_ellipse(c, 54.0 - i * 5.0, 15.0 - i * 2.0, Color(Pal.SHADE, 0.065))
 		elif key.begins_with("block_") and key != "block_mask":
 			_block(c, key.trim_prefix("block_").to_int())
 		elif key == "block_mask":
 			_rrect(Rect2(c - BT.BLOCK_SIZE * 0.5, BT.BLOCK_SIZE), 40.0, Color.WHITE)
 		elif key == "ring":
 			draw_arc(c, 56.0, 0.0, TAU, 72, Color.WHITE, 7.0, true)
-			draw_arc(c, 61.0, 0.0, TAU, 72, Color(Pal.INK, 0.25), 2.5, true)
+			draw_arc(c, 61.0, 0.0, TAU, 72, Color(Pal.SHADE, 0.25), 2.5, true)
 		elif key.begins_with("eye_"):
 			_eye(c, key)
 		elif key == "sparkle":
@@ -286,7 +310,7 @@ class Painter extends Node2D:
 
 	func _halo_star(c: Vector2, r_out: float, r_in: float, points: int, rot: float, color: Color) -> void:
 		for step in [[1.55, 0.05], [1.32, 0.08], [1.14, 0.12]]:
-			_fill(_star_points(c, r_out * step[0], r_in * step[0], points, rot), Color(Pal.INK, step[1]))
+			_fill(_star_points(c, r_out * step[0], r_in * step[0], points, rot), Color(Pal.SHADE, step[1]))
 		_fill(_star_points(c, r_out, r_in, points, rot), color)
 
 	func _round_line(points: PackedVector2Array, color: Color, width: float) -> void:
@@ -329,15 +353,15 @@ class Painter extends Node2D:
 		var w := BT.PITCH + 8.0
 		var x := c.x - w * 0.5
 		var top_y := c.y - 70.0
-		_rrect(Rect2(x + 2.0, c.y - 56.0, w - 4.0, 127.0), 20.0, Color(Pal.INK, 0.22))
-		_rrect(Rect2(x, top_y, w, 136.0), 20.0, BT.OBSTACLE_SIDE)
-		_rrect(Rect2(x, top_y, w, 116.0), 20.0, BT.OBSTACLE_EDGE)
-		_rrect(Rect2(x + 3.0, top_y + 4.0, w - 6.0, 109.0), 17.0, BT.OBSTACLE_TOP)
-		_rrect(Rect2(x + 14.0, top_y + 12.0, w - 28.0, 12.0), 6.0, Color(BT.OBSTACLE_EDGE, 0.55))
+		_rrect(Rect2(x + 2.0, c.y - 56.0, w - 4.0, 127.0), 20.0, Color(Pal.SHADE, 0.22))
+		_rrect(Rect2(x, top_y, w, 136.0), 20.0, Pal.OBSTACLE_SIDE)
+		_rrect(Rect2(x, top_y, w, 116.0), 20.0, Pal.OBSTACLE_EDGE)
+		_rrect(Rect2(x + 3.0, top_y + 4.0, w - 6.0, 109.0), 17.0, Pal.OBSTACLE_TOP)
+		_rrect(Rect2(x + 14.0, top_y + 12.0, w - 28.0, 12.0), 6.0, Color(Pal.OBSTACLE_EDGE, 0.55))
 		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 			var p: Vector2 = c + Vector2(0, -10) + corner * Vector2(30.0, 24.0)
-			draw_circle(p, 6.5, BT.OBSTACLE_SIDE, true, -1.0, true)
-			draw_circle(p + Vector2(-1.5, -1.5), 3.0, Color(BT.OBSTACLE_EDGE, 0.8), true, -1.0, true)
+			draw_circle(p, 6.5, Pal.OBSTACLE_SIDE, true, -1.0, true)
+			draw_circle(p + Vector2(-1.5, -1.5), 3.0, Color(Pal.OBSTACLE_EDGE, 0.8), true, -1.0, true)
 
 	## The rail of a NW deflector: a fillet in the closed corner, along the arc that the blocks follow.
 	func _rail(c: Vector2) -> void:
@@ -351,8 +375,8 @@ class Painter extends Node2D:
 		pts.append(Vector2(center.x, c.y - edge))
 		pts.append(Vector2(c.x - edge, c.y - edge))
 		pts.append(Vector2(c.x - edge, center.y))
-		draw_arc(center, radius - 3.0, PI, PI * 1.5, 40, Color(Pal.INK, 0.14), 8.0, true)
-		draw_arc(center, radius - 7.0, PI, PI * 1.5, 40, Color(Pal.INK, 0.06), 6.0, true)
+		draw_arc(center, radius - 3.0, PI, PI * 1.5, 40, Color(Pal.SHADE, 0.14), 8.0, true)
+		draw_arc(center, radius - 7.0, PI, PI * 1.5, 40, Color(Pal.SHADE, 0.06), 6.0, true)
 		_fill(pts, Pal.CREAM_LIGHT)
 		draw_arc(center, radius + 2.0, PI, PI * 1.5, 40, Pal.CREAM_SHADOW, 5.0, true)
 		draw_arc(center, radius + 10.0, PI, PI * 1.5, 40, Pal.CORAL, 8.0, true)
@@ -385,7 +409,7 @@ class Painter extends Node2D:
 		_ellipse(c + Vector2(32, 14), 9.0, 5.0, blush)
 
 	func _eye(c: Vector2, key: String) -> void:
-		var ink := Pal.INK
+		var ink := Pal.SHADE
 		match key:
 			"eye_open":
 				_ellipse(c, 9.5, 12.5, ink)

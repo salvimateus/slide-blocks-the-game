@@ -169,6 +169,21 @@ func board_rect() -> Rect2:
 	return Rect2(_board_area.global_position - global_position, _board_area.size)
 
 
+## Shows a level in progress at once, with no motion: the name, the meter, the stars, the paint and the tension.
+## Game calls it on a new HUD after a theme change.
+func restore(index: int, info: Dictionary, snap: Dictionary, tense: bool) -> void:
+	_on_level_loaded(index, info)
+	_last_moves = int(snap.get("moves_used", 0))
+	_on_session_changed(snap)
+	_set_tense(tense, false)
+	if _last_moves > 0 and _swipe_hint_on:
+		_swipe_hint_on = false
+		if _swipe_tween:
+			_swipe_tween.kill()
+		_hint_pill.visible = false
+		_swipe_hint.visible = false
+
+
 func _on_board_area_resized() -> void:
 	var area := board_rect()
 	_swipe_hint.position = Vector2(area.get_center().x, area.position.y + area.size.y * 0.72)

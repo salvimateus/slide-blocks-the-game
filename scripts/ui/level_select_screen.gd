@@ -153,6 +153,11 @@ func _place_pages() -> void:
 	_move_strip(false)
 
 
+## The page that shows now, from 0.
+func current_page() -> int:
+	return _page
+
+
 func _go_to(page: int, animate: bool) -> void:
 	_page = clampi(page, 0, _page_count() - 1)
 	for p in _dots.size():

@@ -2,6 +2,7 @@ extends Node
 ## The game flow: boot, screens, levels, swipes, ceremonies and results, the one-jelly mode, the random level job
 ## and the replay of the last game. main.gd calls boot() after all autoloads are ready.
 ## Touch, keys and the harness share one swipe path. A replay plays on the board with no rule-time signal.
+## A theme change (Bus.theme_changed) builds the visuals again behind a cover and opens the same screen again.
 
 const Palette := preload("res://scripts/core/palette.gd")
 const LevelsData := preload("res://scripts/core/levels_data.gd")
@@ -45,6 +46,10 @@ const DIR_ACTIONS: Array[StringName] = [&"swipe_up", &"swipe_down", &"swipe_left
 const UI_LAYER := 10
 const COVER_LAYER := 50
 const COVER_FADE_TIME := 0.3
+const THEME_COVER_IN_TIME := 0.18
+const THEME_COVER_BLEND_TIME := 0.15
+## Frames to wait for the baker, or for the reopened screen to come to rest, after a theme change.
+const THEME_WAIT_FRAMES := 240
 const QUIT_AUDIO_DRAIN := 0.15
 ## The demo board sits between the Home title and the Home buttons.
 const DEMO_TOP := 380.0
@@ -56,6 +61,9 @@ var level_index := -1
 
 var _booted := false
 var _host: Node
+var _bank: Node
+var _back_layer: CanvasLayer
+var _ui: CanvasLayer
 var _board: Node2D
 var _demo: Node2D
 var _background: Control
@@ -96,6 +104,19 @@ var _quitting := false
 var _cover_up := false
 ## The tension state last sent on the Bus.
 var _tense_on := false
+## The summary that the open result or defeat card shows.
+var _card_summary := {}
+## The level info of the last Bus.level_loaded, the seed of the random level job and the last replay step,
+## so a theme change can show them again.
+var _level_info := {}
+var _job_seed := 0
+var _replay_n := 0
+var _replay_total := 0
+## The Palette theme of the visuals that are on screen, and true while a theme change runs.
+var _built_theme: StringName = &""
+var _theme_busy := false
+## False until the screen that a theme change opens again comes to rest.
+var _at_rest := true
 
 # Replay.
 var _replay_card: Control
@@ -117,6 +138,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().auto_accept_quit = false
 	_register_actions()
+	Bus.theme_changed.connect(_on_theme_changed)
 
 
 func _notification(what: int) -> void:
@@ -132,7 +154,7 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _booted or event is InputEventMouse or event is InputEventScreenDrag or event is InputEventScreenTouch:
+	if not _booted or _theme_busy or event is InputEventMouse or event is InputEventScreenDrag or event is InputEventScreenTouch:
 		return
 	if event.is_action_pressed(&"pause"):
 		get_viewport().set_input_as_handled()
@@ -159,21 +181,23 @@ func boot(host: Node) -> void:
 		_rng.seed = seed_arg.to_int()
 	else:
 		_rng.randomize()
+	Palette.apply(Save.theme())
+	_built_theme = Palette.theme
 	get_tree().root.theme = UiTheme.build()
 	ThemeDB.fallback_font = UiTheme.font(UiTuning.WEIGHT_BODY)
 	var cover := _make_cover()
 	var cover_start := Time.get_ticks_msec()
 
 	host.add_child(UiBake.new())
-	var bank := TextureBank.new()
-	host.add_child(bank)
-	await bank.bake()
+	_bank = TextureBank.new()
+	host.add_child(_bank)
+	await _bank.bake()
 
-	var back := CanvasLayer.new()
-	back.layer = -1
-	host.add_child(back)
+	_back_layer = CanvasLayer.new()
+	_back_layer.layer = -1
+	host.add_child(_back_layer)
 	_background = Background.new()
-	back.add_child(_background)
+	_back_layer.add_child(_background)
 
 	var world := Node2D.new()
 	world.name = "World"
@@ -194,25 +218,10 @@ func boot(host: Node) -> void:
 	_replay.stepped.connect(_on_replay_stepped)
 	_replay.finished.connect(_on_replay_finished)
 
-	var ui := CanvasLayer.new()
-	ui.layer = UI_LAYER
-	host.add_child(ui)
-	_hud = Hud.new()
-	_home = HomeScreen.new()
-	_levels = LevelSelectScreen.new()
-	_result = ResultCard.new()
-	_defeat = DefeatCard.new()
-	_pause = PauseDialog.new()
-	_replay_overlay = ReplayOverlay.new()
-	_loading = LoadingScreen.new()
-	for node: Control in [_hud, _replay_overlay, _home, _levels, _result, _defeat, _pause, _loading]:
-		ui.add_child(node)
-	_hud.board_rect_changed.connect(_on_board_rect_changed)
-	_replay_overlay.stop_requested.connect(stop_replay)
-	_loading.cancel_requested.connect(cancel_random)
-	_loading.opened.connect(_on_loading_opened)
-	_result.opened.connect(_emit_replay_end)
-	_defeat.opened.connect(_emit_replay_end)
+	_ui = CanvasLayer.new()
+	_ui.layer = UI_LAYER
+	host.add_child(_ui)
+	_make_screens()
 
 	_input = SwipeInput.new()
 	host.add_child(_input)
@@ -225,7 +234,7 @@ func boot(host: Node) -> void:
 	PerfPanel.option_changed.connect(_apply_perf_option)
 	get_tree().root.size_changed.connect(_on_window_resized)
 
-	await _warm_up(ui)
+	await _warm_up(_ui)
 	var left := Tuning.BOOT_COVER_MIN_TIME - (Time.get_ticks_msec() - cover_start) / 1000.0
 	if left > 0.0:
 		await get_tree().create_timer(left, true, false, true).timeout
@@ -238,6 +247,9 @@ func boot(host: Node) -> void:
 	fade.tween_callback(cover.queue_free)
 	fade.tween_callback(_on_cover_gone)
 	Music.start()
+	# A theme change during the boot builds again now.
+	if Save.theme() != _built_theme:
+		_switch_theme()
 
 
 func _on_cover_gone() -> void:
@@ -311,6 +323,25 @@ func _warm_up(ui: CanvasLayer) -> void:
 	_hide_now(_hud)
 
 
+func _make_screens() -> void:
+	_hud = Hud.new()
+	_home = HomeScreen.new()
+	_levels = LevelSelectScreen.new()
+	_result = ResultCard.new()
+	_defeat = DefeatCard.new()
+	_pause = PauseDialog.new()
+	_replay_overlay = ReplayOverlay.new()
+	_loading = LoadingScreen.new()
+	for node: Control in [_hud, _replay_overlay, _home, _levels, _result, _defeat, _pause, _loading]:
+		_ui.add_child(node)
+	_hud.board_rect_changed.connect(_on_board_rect_changed)
+	_replay_overlay.stop_requested.connect(stop_replay)
+	_loading.cancel_requested.connect(cancel_random)
+	_loading.opened.connect(_on_loading_opened)
+	_result.opened.connect(_emit_replay_end)
+	_defeat.opened.connect(_emit_replay_end)
+
+
 ## Hides a screen at once, with no fade, so nothing of the warm-up shows when the cover lifts.
 func _hide_now(node: Control) -> void:
 	node.call("_kill_screen_tween")
@@ -336,14 +367,19 @@ func _warm_up_bake(level: RefCounted, hues: PackedInt32Array) -> void:
 	_result.call("_fill", sample)
 	_defeat.call("_fill", sample)
 	_pause.call("_fill", {"solo": &"ready", "mode_solo": false})
+	# The HUD is open at boot. After a theme change it is new and hidden, so it shows here with the screens.
 	var screens: Array[Control] = [_home, _levels, _result, _defeat, _pause, _replay_overlay, _loading]
+	if not _hud.visible:
+		screens.append(_hud)
 	for node in screens:
 		node.visible = true
 		node.modulate.a = 0.01
 	for i in 2:
 		await get_tree().process_frame
-	for node: Control in screens + [_hud]:
+	for node: Control in screens:
 		_prewarm_tree(node)
+	if not screens.has(_hud):
+		_prewarm_tree(_hud)
 	# The rows of a random level show only then: lay them out and ask for their icons too.
 	var random_sample := sample.duplicate()
 	random_sample.merge({"mode": &"random", "level_index": -1, "seed": RandomLevel.SEED_MAX, "next_unlocked": false}, true)
@@ -434,6 +470,7 @@ func start_random(seed_value: int = -1) -> void:
 		seed_used = _rng.randi_range(RandomLevel.SEED_MIN, RandomLevel.SEED_MAX)
 	_job_prev_screen = screen
 	_job_active = true
+	_job_seed = seed_used
 	_job_serial += 1
 	_job_cancel = RandomLevel.Cancel.new()
 	var serial := _job_serial
@@ -502,7 +539,7 @@ func set_paused(on: bool) -> void:
 
 
 func request_swipe(dir: int) -> void:
-	if _phase != &"play" or _paused or _session == null or dir < 0 or dir > 3:
+	if _phase != &"play" or _paused or _theme_busy or _session == null or dir < 0 or dir > 3:
 		return
 	if _session.status == &"won" or _session.status == &"lost":
 		return
@@ -537,6 +574,8 @@ func play_replay() -> void:
 	var total: int = _session.history.length()
 	_replay_card.close()
 	_hud.close()
+	_replay_n = 0
+	_replay_total = total
 	_phase = &"replay"
 	_set_screen(&"replay", false)
 	_replay_overlay.open({"total": total})
@@ -575,6 +614,19 @@ func quit(code: int = 0) -> void:
 	get_tree().quit(code)
 
 
+## The rect of a named button in base units of the viewport, for a scripted tap, or an empty rect when it is
+## not on screen. Names: theme (the theme button of Home).
+func button_rect(button: StringName) -> Rect2:
+	var node: Control = null
+	match button:
+		&"theme":
+			if screen == &"home" and _home.is_open:
+				node = _home.theme_button
+	if node == null or not node.is_visible_in_tree():
+		return Rect2()
+	return node.get_global_rect()
+
+
 func snapshot() -> Dictionary:
 	if _session == null or _phase == &"off":
 		return {"screen": screen}
@@ -601,6 +653,7 @@ func _begin_level(level: RefCounted, par: Dictionary, index: int, info: Dictiona
 	_level = level
 	_par = par
 	_mode = info.mode
+	_level_info = info
 	_seed = int(info.seed)
 	_random_solo = bool(info.solo)
 	var hues := _pick_hues()
@@ -714,6 +767,7 @@ func _on_ceremony_finished(_kind: StringName) -> void:
 	var card: Control = _result if won else _defeat
 	var value: StringName = &"result" if won else &"defeat"
 	card.use_scrim = true
+	_card_summary = summary
 	card.open(summary)
 	screen = value
 	_announce_on_open(card, value)
@@ -875,11 +929,17 @@ func _on_tapped() -> void:
 func _on_replay_stepped(n: int, total: int) -> void:
 	if _phase != &"replay":
 		return
-	_replay_overlay.set_step(n, total)
+	_replay_n = n
+	_replay_total = total
+	if not _theme_busy:
+		_replay_overlay.set_step(n, total)
 	Bus.replay_step.emit(n, total)
 
 
 func _on_replay_finished(completed: bool, positions: PackedInt32Array, painted: int) -> void:
+	# The screens are not there while a theme change builds them again.
+	while _theme_busy:
+		await get_tree().process_frame
 	if _phase != &"replay":
 		return
 	_phase = &"card"
@@ -929,6 +989,11 @@ func _on_job_done(serial: int, seed_value: int, result: Dictionary, thread: Thre
 	_threads.erase(thread)
 	if serial != _job_serial or not _job_active or result.has("cancelled"):
 		return
+	# The screens are not there while a theme change builds them again.
+	while _theme_busy:
+		await get_tree().process_frame
+	if serial != _job_serial or not _job_active:
+		return
 	if result.size() <= 1:
 		push_error("Game: no random level for seed %d" % seed_value)
 		_job_active = false
@@ -939,6 +1004,10 @@ func _on_job_done(serial: int, seed_value: int, result: Dictionary, thread: Thre
 		await get_tree().create_timer(_random_hold_ms / 1000.0, true, false, true).timeout
 		if serial != _job_serial or not _job_active:
 			return
+	while _theme_busy:
+		await get_tree().process_frame
+	if serial != _job_serial or not _job_active:
+		return
 	_job_active = false
 	var level: RefCounted = result.level
 	var t := ScoreRules.thresholds(int(result.min), RandomLevel.SCORE_INDEX)
@@ -966,6 +1035,140 @@ func _on_loading_opened() -> void:
 func _close_loading() -> void:
 	if _loading.is_open:
 		_loading.close()
+
+
+# --- Theme -------------------------------------------------------------------
+
+func _on_theme_changed(_theme: StringName) -> void:
+	if _booted and not _theme_busy:
+		_switch_theme()
+
+
+## Fades in a cover in the old colors, applies Save.theme() to the Palette, builds the Theme, the atlases,
+## the background, the tray and the screens again, opens the same screen in the same state, then lifts the cover.
+## The Palette changes only below the cover, so no frame shows parts of two themes.
+## A change that comes while this runs starts one more pass at the end.
+func _switch_theme() -> void:
+	_theme_busy = true
+	var old_cream := Palette.CREAM
+	var cover := CanvasLayer.new()
+	cover.layer = COVER_LAYER
+	cover.process_mode = Node.PROCESS_MODE_ALWAYS
+	_host.add_child(cover)
+	var face := ColorRect.new()
+	face.color = Color(old_cream, 0.0)
+	face.mouse_filter = Control.MOUSE_FILTER_STOP
+	face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cover.add_child(face)
+	var fade := cover.create_tween()
+	fade.tween_property(face, "color:a", 1.0, THEME_COVER_IN_TIME)
+	await fade.finished
+
+	while Save.theme() != _built_theme:
+		_built_theme = Save.theme()
+		Palette.apply(_built_theme)
+		await _rebuild_visuals()
+
+	var lift := cover.create_tween()
+	lift.tween_property(face, "color", Palette.CREAM, THEME_COVER_BLEND_TIME)
+	lift.tween_property(face, "color:a", 0.0, COVER_FADE_TIME)
+	await lift.finished
+	cover.queue_free()
+	await _wait_for_rest()
+	_theme_busy = false
+	Bus.theme_applied.emit(_built_theme)
+	if Save.theme() != _built_theme:
+		_switch_theme()
+
+
+## The old screens stay until the new ones are made, so a call that comes during the awaits always finds a live
+## screen. The state that the new screens show comes from Game, not from the old screens.
+func _rebuild_visuals() -> void:
+	get_tree().root.theme = UiTheme.build()
+	var frames := 0
+	while not UiBake.is_idle() and frames < THEME_WAIT_FRAMES:
+		await get_tree().process_frame
+		frames += 1
+	UiBake.clear()
+	await _bank.rebake()
+	_background.queue_free()
+	_background = Background.new()
+	_back_layer.add_child(_background)
+	_board.refresh_theme()
+	_demo.board.refresh_theme()
+	var page: int = _levels.current_page()
+	var revealed: bool = _loading.is_revealed()
+	var old: Array[Control] = [_hud, _replay_overlay, _home, _levels, _result, _defeat, _pause, _loading]
+	_make_screens()
+	for node in old:
+		_ui.remove_child(node)
+		node.queue_free()
+	var level := LevelParser.parse(LevelsData.LEVELS[LevelsData.LEVELS.size() - 1], LevelsData.LEVELS.size() - 1)
+	await _warm_up_bake(level, Palette.pick_block_hues(level.starts.size(), _rng))
+	_hide_now(_hud)
+	_reopen_screens(page, revealed)
+
+
+## Opens the screens of the current state again: Home or the level select (at `page`) with their open motion,
+## the HUD at rest with the session state, the card at its final state, the pause dialog, the replay overlay
+## at its step, and the loading screen of a random level job (shown when it was `revealed`).
+func _reopen_screens(page: int, revealed: bool) -> void:
+	_at_rest = false
+	if _phase != &"off" and _session != null:
+		_hud.restore(level_index, _level_info, _session.snapshot(), _tense_on)
+		if _phase != &"replay":
+			_hud.open()
+			var intro: Tween = _hud.get("_screen_tween")
+			if intro != null:
+				intro.custom_step(60.0)
+	var target: Control = null
+	# The loading screen of a random level job opens over the screen that started the job.
+	match _job_prev_screen if screen == &"loading" else screen:
+		&"home":
+			target = _home
+		&"levels":
+			target = _levels
+		&"result":
+			target = _result
+		&"defeat":
+			target = _defeat
+	if _phase == &"replay":
+		# The card of the replay waits, closed and filled, until the replay ends and reopens it.
+		_replay_card = _result if _card_summary.get("status") == &"won" else _defeat
+		_replay_card.use_scrim = true
+		_replay_card.call("_fill", _card_summary)
+		target = _replay_overlay
+	if _paused:
+		target = _pause
+	if target != null:
+		target.opened.connect(func() -> void: _at_rest = true, CONNECT_ONE_SHOT)
+		if target == _result or target == _defeat:
+			target.use_scrim = true
+			target.open(_card_summary)
+			target.skip()
+		elif target == _levels:
+			_levels.open({"page": page})
+		elif target == _pause:
+			_pause.open(_pause_data())
+		elif target == _replay_overlay:
+			_replay_overlay.open({"total": _replay_total})
+			if _replay_n > 0:
+				_replay_overlay.set_step(_replay_n, _replay_total)
+		else:
+			target.open()
+	else:
+		_at_rest = true
+	if _job_active:
+		_loading.open({"seed": _job_seed})
+		if revealed:
+			_loading.reveal()
+
+
+func _wait_for_rest() -> void:
+	var frames := 0
+	while not _at_rest and frames < THEME_WAIT_FRAMES:
+		await get_tree().process_frame
+		frames += 1
 
 
 # --- Layout and options ------------------------------------------------------

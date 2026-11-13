@@ -1,15 +1,17 @@
 extends Node
 ## Progress and settings in a ConfigFile at user://save.cfg.
-## [meta] version, [level.<id>] stars, best_moves, best_time_ms, [settings] music, sfx, haptics, reduced_motion, solo, language.
+## [meta] version, [level.<id>] stars, best_moves, best_time_ms, [settings] music, sfx, haptics, reduced_motion, solo, language, theme.
 ## A one-jelly version keeps its own record in [level.<id>_solo]; the best moves of the two versions never mix.
 ## `solo` is the wish of the player for one jelly; a level with no one-jelly version plays its normal map.
 ## `language` is "pt" or "en"; with no key the UI follows the device language.
+## `theme` is "light" or "dark"; with no key the game follows the dark mode of the device.
 ## A read error gives default data in memory; an unreadable file is kept next to the save as <name>.bad.
 
 const LevelsData := preload("res://scripts/core/levels_data.gd")
 const Strings := preload("res://scripts/ui/strings.gd")
 const LevelModes := preload("res://scripts/core/level_modes.gd")
 const SoloVariant := preload("res://scripts/core/solo_variant.gd")
+const Palette := preload("res://scripts/core/palette.gd")
 
 const VERSION := 1
 const DEFAULT_PATH := "user://save.cfg"
@@ -21,6 +23,9 @@ var _records: Dictionary = {}       # level id -> {"stars", "best_moves", "best_
 var _settings: Dictionary = DEFAULT_SETTINGS.duplicate()
 var _language: StringName = &""          # the stored choice; &"" follows the device
 var _forced_language: StringName = &""   # this run only (harness)
+var _theme: StringName = &""          # the stored choice; &"" follows the device
+var _forced_theme: StringName = &""   # this run only (harness)
+var _sent_theme: StringName = &""     # the last theme sent on Bus.theme_changed
 var _unlock_all := false
 var _dirty := false
 
@@ -29,6 +34,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load()
 	_apply_language()
+	_apply_theme()
 
 
 func _notification(what: int) -> void:
@@ -127,12 +133,46 @@ func force_language(code: StringName) -> void:
 	_apply_language()
 
 
+## The color theme: the forced theme of this run, else the stored choice, else the dark mode of the device.
+func theme() -> StringName:
+	if _forced_theme != &"":
+		return _forced_theme
+	if _theme != &"":
+		return _theme
+	if DisplayServer.is_dark_mode_supported() and DisplayServer.is_dark_mode():
+		return &"dark"
+	return &"light"
+
+
+## Stores the choice of the player. Game then changes the colors of the game to it.
+func set_theme(value: StringName) -> void:
+	if not Palette.THEMES.has(value):
+		push_warning("Save: unknown theme '%s'" % value)
+		return
+	_forced_theme = &""
+	if _theme != value:
+		_theme = value
+		_dirty = true
+		flush()
+	_apply_theme()
+
+
+## Sets the theme for this run only, with no write. The harness uses it.
+func force_theme(value: StringName) -> void:
+	if not Palette.THEMES.has(value):
+		push_warning("Save: unknown theme '%s'" % value)
+		return
+	_forced_theme = value
+	_apply_theme()
+
+
 ## Points the store to a different file and reads it. The harness uses it for a clean save.
 func use_path(path: String) -> void:
 	flush()
 	_path = path
 	_load()
 	_apply_language()
+	_apply_theme()
 
 
 ## Opens all levels, in memory only.
@@ -153,6 +193,8 @@ func flush() -> void:
 		cfg.set_value("settings", String(key), _settings[key])
 	if _language != &"":
 		cfg.set_value("settings", "language", String(_language))
+	if _theme != &"":
+		cfg.set_value("settings", "theme", String(_theme))
 	var dir_err := DirAccess.make_dir_recursive_absolute(_path.get_base_dir())
 	if dir_err != OK and not DirAccess.dir_exists_absolute(_path.get_base_dir()):
 		push_warning("Save: cannot create the folder of %s (error %d)" % [_path, dir_err])
@@ -172,10 +214,20 @@ func _apply_language() -> void:
 	Bus.locale_changed.emit(code)
 
 
+## Tells the game when theme() changes. Game applies it to the Palette at boot, and behind a cover after the boot.
+func _apply_theme() -> void:
+	var value := theme()
+	if value == _sent_theme:
+		return
+	_sent_theme = value
+	Bus.theme_changed.emit(value)
+
+
 func _load() -> void:
 	_records.clear()
 	_settings = DEFAULT_SETTINGS.duplicate()
 	_language = &""
+	_theme = &""
 	_dirty = false
 	if not FileAccess.file_exists(_path):
 		return
@@ -192,6 +244,9 @@ func _load() -> void:
 	var language_value: Variant = cfg.get_value("settings", "language", "")
 	if typeof(language_value) == TYPE_STRING and Strings.TABLES.has(StringName(language_value)):
 		_language = StringName(language_value)
+	var theme_value: Variant = cfg.get_value("settings", "theme", "")
+	if typeof(theme_value) == TYPE_STRING and Palette.THEMES.has(StringName(theme_value)):
+		_theme = StringName(theme_value)
 	for i in LevelsData.LEVELS.size():
 		var id := String(LevelsData.LEVELS[i].id)
 		_load_record(cfg, id)

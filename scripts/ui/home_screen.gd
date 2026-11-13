@@ -1,5 +1,6 @@
 extends "res://scripts/ui/screen.gd"
-## Home: the bouncing title, the play button, and the levels and random level buttons side by side. The background stays clear: Game shows the live demo board behind it.
+## Home: the bouncing title, the play button, the levels and random level buttons side by side, and a round
+## theme button in the top right corner. The background stays clear: Game shows the live demo board behind it.
 
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
@@ -7,6 +8,8 @@ var _letters: Array[Label] = []
 var _play_button: Button
 var _levels_button: Button
 var _random_button: Button
+## Shows the theme that a tap selects: a moon in the light theme, a sun in the dark theme.
+var theme_button: Button
 var _bob_tweens: Array[Tween] = []
 
 
@@ -65,6 +68,15 @@ func _init() -> void:
 	_random_button.custom_minimum_size.x = 398.0
 	_random_button.pressed.connect(func() -> void: Game.start_random())
 	row.add_child(_random_button)
+
+	# A second column keeps the button in the safe area, above the title row and away from the demo board.
+	var corner := Column.new()
+	add_child(corner)
+	theme_button = _round_button(&"sun" if Palette.theme == &"dark" else &"moon")
+	theme_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	theme_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	theme_button.pressed.connect(func() -> void: Save.set_theme(&"light" if Save.theme() == &"dark" else &"dark"))
+	corner.add_child(theme_button)
 
 
 func _play_in() -> void:

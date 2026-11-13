@@ -9,7 +9,6 @@ const UiTheme := preload("res://scripts/ui/ui_theme.gd")
 const UiTuning := preload("res://scripts/ui/ui_tuning.gd")
 const Icon := preload("res://scripts/ui/icon.gd")
 
-const ZONE_COLORS: Array[Color] = [UiTheme.ZONE_THREE, UiTheme.ZONE_TWO, UiTheme.ZONE_ONE]
 const METER_BAR_HEIGHT := 26.0
 const RESULT_BAR_HEIGHT := 34.0
 const BUBBLE_HEIGHT := 46.0
@@ -176,10 +175,11 @@ func _draw() -> void:
 	var outer := track.grow(TRACK_PAD)
 	draw_style_box(UiTheme.box(Palette.MINT, int(outer.size.y / 2.0), Palette.FLOOR_SHADOW, 2), outer)
 	var radius := int(track.size.y / 2.0)
+	var zone_colors: Array[Color] = [UiTheme.ZONE_THREE, UiTheme.ZONE_TWO, UiTheme.ZONE_ONE]
 	for z in 3:
 		var x0 := track.position.x + _edges[z] * track.size.x + (ZONE_GAP / 2.0 if z > 0 else 0.0)
 		var x1 := track.position.x + _edges[z + 1] * track.size.x - (ZONE_GAP / 2.0 if z < 2 else 0.0)
-		var sb := UiTheme.box(ZONE_COLORS[z], 0)
+		var sb := UiTheme.box(zone_colors[z], 0)
 		sb.corner_radius_top_left = radius if z == 0 else 6
 		sb.corner_radius_bottom_left = radius if z == 0 else 6
 		sb.corner_radius_top_right = radius if z == 2 else 6

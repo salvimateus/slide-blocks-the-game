@@ -134,6 +134,13 @@ static func is_idle() -> bool:
 	return _active == null or (not _busy and _pending.is_empty())
 
 
+## Drops every baked look, for example after a Palette theme change. The next draw of each item asks for a new bake.
+## Call it only when is_idle() is true: a batch that bakes during the call stores its looks after the clear.
+static func clear() -> void:
+	_cache.clear()
+	_pending.clear()
+
+
 ## Shows the baked look of `label` (text, outline and shadow) as one textured rect.
 static func flatten_label(label: Label) -> void:
 	label.add_child(LabelFace.new(label))

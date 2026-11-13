@@ -5,10 +5,10 @@ const Palette := preload("res://scripts/core/palette.gd")
 const UiTuning := preload("res://scripts/ui/ui_tuning.gd")
 const NUNITO := preload("res://ui/fonts/Nunito-VariableFont_wght.ttf")
 
-# Meter zones, derived from the palette.
-const ZONE_THREE := Color("#F8D89C")   # star mixed with cream_light
-const ZONE_TWO := Palette.TRAY_HIGHLIGHT
-const ZONE_ONE := Palette.CORAL_SOFT
+# Meter zones, derived from the palette. `build()` sets them again after a theme change.
+static var ZONE_THREE := Palette.METER_GOLD
+static var ZONE_TWO := Palette.TRAY_HIGHLIGHT
+static var ZONE_ONE := Palette.CORAL_SOFT
 
 const BUTTON_STATES: Array[String] = ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]
 const FONT_COLOR_STATES: Array[String] = [
@@ -29,8 +29,12 @@ static func font(weight: int) -> FontVariation:
 	return variation
 
 
-## The one Theme of the game. Game sets it on the root window at boot.
+## The one Theme of the game, in the colors of the current Palette theme. Game sets it on the root window
+## at boot and after a theme change.
 static func build() -> Theme:
+	ZONE_THREE = Palette.METER_GOLD
+	ZONE_TWO = Palette.TRAY_HIGHLIGHT
+	ZONE_ONE = Palette.CORAL_SOFT
 	var theme := Theme.new()
 	theme.default_font = font(UiTuning.WEIGHT_BODY)
 	theme.default_font_size = UiTuning.SIZE_BODY

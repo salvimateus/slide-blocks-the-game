@@ -77,6 +77,11 @@ func _play_in() -> void:
 	position = Vector2.ZERO
 
 
+## True when the open screen shows (after reveal()).
+func is_revealed() -> bool:
+	return _revealed
+
+
 ## Fades the open screen in, springs the card and starts the bob, then emits `opened`.
 func reveal() -> void:
 	if not is_open or _revealed:

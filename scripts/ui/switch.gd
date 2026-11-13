@@ -24,8 +24,8 @@ func _init() -> void:
 	var track_off := UiBake.BoxFace.new(UiTheme.box(Palette.FLOOR_SHADOW, radius))
 	_track_on = UiBake.BoxFace.new(UiTheme.box(Palette.PERIWINKLE, radius, Palette.TRAY_SHADOW, 3))
 	var knob_size := TRACK_SIZE.y - KNOB_INSET * 2.0
-	var knob_box := UiTheme.box(Palette.CREAM_LIGHT, int(knob_size / 2.0))
-	knob_box.shadow_color = Color(Palette.INK, 0.25)
+	var knob_box := UiTheme.box(Palette.KNOB, int(knob_size / 2.0))
+	knob_box.shadow_color = Color(Palette.SHADE, 0.25)
 	knob_box.shadow_size = 3
 	knob_box.shadow_offset = Vector2(0, 2)
 	_knob = UiBake.BoxFace.new(knob_box)

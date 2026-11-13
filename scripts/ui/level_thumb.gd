@@ -197,8 +197,8 @@ func _draw_block(r: Rect2, cell: float, hue: int) -> void:
 	_rbox(Rect2(body.position, body.size - Vector2(0, cell * 0.08)), cell * 0.3, Palette.BODY[hue])
 	var eye_y := body.position.y + body.size.y * 0.45
 	var eye_r := maxf(cell * 0.07, 0.8)
-	draw_circle(Vector2(body.position.x + body.size.x * 0.34, eye_y), eye_r, _tone(Palette.INK), true, -1.0, true)
-	draw_circle(Vector2(body.position.x + body.size.x * 0.66, eye_y), eye_r, _tone(Palette.INK), true, -1.0, true)
+	draw_circle(Vector2(body.position.x + body.size.x * 0.34, eye_y), eye_r, _tone(Palette.SHADE), true, -1.0, true)
+	draw_circle(Vector2(body.position.x + body.size.x * 0.66, eye_y), eye_r, _tone(Palette.SHADE), true, -1.0, true)
 
 
 func _rbox(rect: Rect2, radius: float, c: Color) -> void:
