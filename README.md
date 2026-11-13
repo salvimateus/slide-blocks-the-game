@@ -27,7 +27,7 @@
 - One to four jellies sit on the board. Each jelly has its own color.
 - Swipe to move the jellies. Each tile that a jelly touches takes its color.
 - Paint all the floor tiles to complete the level. Use as few moves as possible to get three stars.
-- The game has 20 levels, a one-jelly mode and endless random levels.
+- The game has 24 levels, a one-jelly mode and endless random levels.
 - Watch a replay of your game after each win or defeat.
 - Play in English or in Brazilian Portuguese, in a light or a dark theme.
 
@@ -106,7 +106,7 @@ The jellies keep the same colors in the two themes. Tap the moon or the sun at t
 
 ### Levels
 
-- 20 levels on three pages of the level select screen. You can get 60 stars.
+- 24 levels on three pages of the level select screen. You can get 72 stars.
 - Level 1 is always open. A level opens when you get one star on the level before it, in any mode.
 - The level hints teach the rules: the curved rails, a stopped jelly as a wall, and two jellies that go to the same tile.
 
@@ -134,7 +134,7 @@ The jellies keep the same colors in the two themes. Tap the moon or the sun at t
 
 ## Features
 
-- **20 levels** with 1 to 4 jellies, obstacles and curved rails. Each level has a name.
+- **24 levels** with 1 to 4 jellies, obstacles and curved rails. Each level has a name.
 - **Star score and records.** The game keeps the stars, the best move count and the best time of each level, in each mode.
 - **Two languages.** English and Brazilian Portuguese, with the level names. The game uses the language of the device. Change it in the pause dialog.
 - **Light and dark themes.** A dark "night candy" palette. Use the round button at the top right of the home screen, or the "Dark mode" row below "Language" in the pause dialog. The theme changes at once, behind a short cover. The game stays on the same screen and in the same state, also in a replay or a random level. The game keeps your choice. With no choice, it follows the device.
@@ -242,7 +242,7 @@ The `Harness` autoload reads arguments after `--`. With no argument, it does not
 
 | Argument | What it does |
 |---|---|
-| `--level=<n>` | Starts level n (1 to 20). |
+| `--level=<n>` | Starts level n (1 to 24). |
 | `--moves=<UDLR>` | Sends the swipes as touch drags, for example `--moves=URUUR`. |
 | `--keys=<UDLR>` | Sends the swipes as key presses. |
 | `--solve` | Plays the solution of the level with the minimum moves. It also works in one-jelly mode and on a random level. |

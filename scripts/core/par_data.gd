@@ -22,6 +22,10 @@ const PAR := {
 	"l18": {"min": 18, "solution": "LDURDRDLDRDLDLUDRU"},
 	"l19": {"min": 21, "solution": "LRDLDLURULURULURULRDL"},
 	"l20": {"min": 24, "solution": "URDRULULDRDRDLDLULDRDRUL"},
+	"l21": {"min": 25, "solution": "DRUDLRULRDUURDLDUDRDUDRDL"},
+	"l22": {"min": 27, "solution": "RULDUULRDLUDLRUDULULRULDULR"},
+	"l23": {"min": 28, "solution": "UDRDRURDLULULURRLDRULRDULDDR"},
+	"l24": {"min": 30, "solution": "LULULDRLLRDRULRDRURURUDLURLDUL"},
 	"demo": {"min": 5, "solution": "RLLDU"},
 }
 
@@ -45,4 +49,8 @@ const SOLO := {
 	"l18": {"keep": 2, "walls": [14, 47, 75], "min": 23, "solution": "DLULURURULDLURLDRURLULD"},
 	"l19": {"keep": 2, "walls": [10, 36, 37, 44, 46], "min": 21, "solution": "LRDLDLRULRULULDLRULUL"},
 	"l20": {"keep": 2, "walls": [23, 25, 37, 52, 79, 81], "min": 28, "solution": "UDRULULULUDRDLRULURLULDRDURD"},
+	"l21": {"keep": 2, "walls": [49, 81, 83], "min": 21, "solution": "LRDLDLRLULDLDULRDRURL"},
+	"l22": {"keep": 1, "walls": [22, 23, 25, 51, 85], "min": 13, "solution": "LDURURDLDURDR"},
+	"l23": {"keep": 1, "walls": [49, 73, 83], "min": 25, "solution": "UDRDRDLDDULULURRDRRDRRDLD"},
+	"l24": {"keep": 4, "walls": [29, 38, 41, 45, 70], "min": 25, "solution": "LRDLDLDURDULRDRDRURDRLDUR"},
 }

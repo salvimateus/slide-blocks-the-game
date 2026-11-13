@@ -67,6 +67,10 @@ const PT := {
 	"level_18_name": "Espelho de Açúcar",
 	"level_19_name": "Câmaras de Brigadeiro",
 	"level_20_name": "Bala Embrulhada",
+	"level_21_name": "Cata-vento de Menta",
+	"level_22_name": "Rosquinha Glaçada",
+	"level_23_name": "Ladeira de Paçoca",
+	"level_24_name": "Grande Confeitaria",
 
 	# HUD.
 	"hud_level": "Fase {n}",
@@ -210,6 +214,10 @@ const EN := {
 	"level_18_name": "Sugar Mirror",
 	"level_19_name": "Fudge Chambers",
 	"level_20_name": "Wrapped Candy",
+	"level_21_name": "Peppermint Pinwheel",
+	"level_22_name": "Glazed Donut",
+	"level_23_name": "Peanut Brittle Slope",
+	"level_24_name": "Grand Candy Shop",
 
 	# HUD.
 	"hud_level": "Level {n}",
