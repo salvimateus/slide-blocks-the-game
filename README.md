@@ -16,9 +16,9 @@
 > A free portrait mobile game, made with Godot 4.7.2 and GDScript. Each sound and each piece of music comes from code.
 
 <p align="center">
-  <img src="docs/readme/home.webp" width="260" alt="The home screen with the title Trilha Jujuba, a live demo board and the Jogar and Fases buttons">
+  <img src="docs/readme/home.webp" width="260" alt="The home screen with the title Trilha Jujuba, a live demo board, the theme button at the top right and the Play, Levels and Random level buttons">
   <img src="docs/readme/swipe-paint.webp" width="260" alt="Level 8 in the middle of a swipe: four jellies slide down and leave trails of paint">
-  <img src="docs/readme/result-card.webp" width="260" alt="The result card with three stars, the time, the move count and the star ranges">
+  <img src="docs/readme/result-card.webp" width="260" alt="The result card with three stars, the time, the move count, the star ranges and the Watch replay button">
 </p>
 
 ## The game
@@ -27,27 +27,42 @@
 - One to four jellies sit on the board. Each jelly has its own color.
 - Swipe to move the jellies. Each tile that a jelly touches takes its color.
 - Paint all the floor tiles to complete the level. Use as few moves as possible to get three stars.
-- The game has 8 levels, a star score for each level and a record of your best result.
-- The interface text is in Brazilian Portuguese.
+- The game has 20 levels, a one-jelly mode and endless random levels.
+- Watch a replay of your game after each win or defeat.
+- Play in English or in Brazilian Portuguese, in a light or a dark theme.
 
 ## Gallery
 
 | | |
 |---|---|
-| ![The level select screen with 8 level cards, the stars of each level, a "Nova" tag and two locked levels](docs/readme/level-select.webp) | ![Level 8 at the start: four jellies, dark obstacle blocks and three curved rails](docs/readme/level-start.webp) |
-| The level select screen shows your stars. A level opens when you get one star on the level before it. | Level 8 at the start, with four jellies, obstacles and curved rails. |
+| ![The level select screen: the first page of level cards, the stars of each level, the one-jelly switch and the page buttons](docs/readme/level-select.webp) | ![Level 8 at the start: four jellies, dark obstacle blocks and three curved rails](docs/readme/level-start.webp) |
+| The level select screen shows your stars on three pages. A level opens when you get one star on the level before it. | Level 8 at the start, with four jellies, obstacles and curved rails. |
 | ![A swipe to the right: the red and purple jellies slide and leave paint trails behind them](docs/readme/swipe-trails.webp) | ![The win wave: the tiles jump and flash while glitter flies from the last jelly](docs/readme/win-wave.webp) |
 | All the jellies slide at the same time and paint their path. | The last tile starts the win wave across the board. |
-| ![The HUD in tension: "Restam 3" in red and a red frame around the move meter](docs/readme/tension.webp) | ![The defeat card: a sad jelly, "Acabaram os movimentos" and the painted percentage](docs/readme/defeat-card.webp) |
+| ![The HUD in tension: three moves left in red and a red frame around the move meter](docs/readme/tension.webp) | ![The defeat card: a sad jelly, the painted percentage, Retry and Watch replay](docs/readme/defeat-card.webp) |
 | Near the move limit, the HUD turns red and the music becomes tense. | When the moves stop, the defeat card shows how much of the path you painted. |
-| ![The pause dialog with Continuar, Fases and the switches for music, sound effects, vibration and reduced motion](docs/readme/pause.webp) | ![Level 2 at the start: one orange jelly and a column of obstacles](docs/readme/first-levels.webp) |
-| The pause dialog holds the music, sound, vibration and reduced motion switches. | The first levels teach the rules with one jelly. |
+| ![A replay in progress: the board plays the moves again, with the move counter and "Tap to go back" at the bottom](docs/readme/replay.webp) | ![Level 8 in one-jelly mode: one jelly and some new walls on the same board](docs/readme/one-jelly.webp) |
+| Watch your own game again, move by move. | One-jelly mode: the same level with one jelly, a new puzzle and its own stars. |
+| ![A random level: a new board, with "Random level" and the seed in the HUD](docs/readme/random-level.webp) | ![The pause dialog with Resume, Levels, the one-jelly switch, and the music, sound effects, vibration, reduced motion, language and dark mode rows](docs/readme/pause.webp) |
+| Random levels never end. Each one has a seed and a solution. | The pause dialog holds the modes and the settings. |
+
+### Light and dark
+
+| Light | Dark |
+|---|---|
+| ![The home screen in the light theme, with the moon button at the top right](docs/readme/theme-home-light.webp) | ![The home screen in the dark theme, with the sun button at the top right](docs/readme/theme-home-dark.webp) |
+| ![The level select screen in the light theme](docs/readme/theme-levels-light.webp) | ![The level select screen in the dark theme](docs/readme/theme-levels-dark.webp) |
+| ![Level 8 in the middle of a swipe, in the light theme](docs/readme/theme-play-light.webp) | ![Level 8 in the middle of a swipe, in the dark theme](docs/readme/theme-play-dark.webp) |
+| ![The pause dialog in the light theme](docs/readme/theme-pause-light.webp) | ![The pause dialog in the dark theme](docs/readme/theme-pause-dark.webp) |
+
+The jellies keep the same colors in the two themes. Tap the moon or the sun at the top right of the home screen to change the theme.
 
 ## Contents
 
 - [The game](#the-game)
 - [Gallery](#gallery)
 - [How to play](#how-to-play)
+- [Modes](#modes)
 - [Features](#features)
 - [Download](#download)
 - [Build from source](#build-from-source)
@@ -75,7 +90,7 @@
 
 - A swipe counts as a move only when at least one jelly changes its position.
 - A swipe into a wall does not count. The jellies only give a small nudge.
-- Each level has a move limit. The HUD shows the moves that remain ("Restam").
+- Each level has a move limit. The HUD shows the moves that remain.
 - Near the limit, the tension starts: the meter turns red and the music changes.
 
 ### Win, lose and stars
@@ -87,10 +102,42 @@
 - The move meter shows the star ranges. When a move drops a star, the star falls from the HUD.
 - The result card shows your time, your moves and the move range for 3 stars.
 
+## Modes
+
+### Levels
+
+- 20 levels on three pages of the level select screen. You can get 60 stars.
+- Level 1 is always open. A level opens when you get one star on the level before it, in any mode.
+- The level hints teach the rules: the curved rails, a stopped jelly as a wall, and two jellies that go to the same tile.
+
+### One-jelly mode
+
+- Turn it on with the "1 jelly" switch on the level select screen, or with the "One jelly" switch in the pause dialog.
+- Each level with two or more jellies becomes a new puzzle with one jelly. Some floor tiles become walls.
+- Levels 1 to 3 have one jelly already, so they do not change.
+- The mode has its own minimum moves, its own stars and its own records.
+- When you change the mode in the pause dialog, the level starts again when you continue.
+
+### Random levels
+
+- Push "Random level" on the home screen, or "New random" on the result card or the defeat card.
+- Each random level comes from a seed. The HUD shows the seed.
+- The game makes a new board, solves it and keeps it only when the puzzle is good. A short loading screen can show during this work.
+- A random level has 1 or 2 jellies, or 1 jelly in one-jelly mode.
+- Random levels give stars, but the game keeps no record of them.
+
+### Replay
+
+- After a win or a defeat, push "Watch replay" on the card.
+- The board goes back to the start and plays your moves again, one by one.
+- Tap the screen, or push Esc, to stop the replay.
+
 ## Features
 
-- **8 levels** with 1 to 4 jellies, obstacles and curved rails. Each level has a name.
-- **Star score and records.** The game keeps the stars, the best move count and the best time of each level.
+- **20 levels** with 1 to 4 jellies, obstacles and curved rails. Each level has a name.
+- **Star score and records.** The game keeps the stars, the best move count and the best time of each level, in each mode.
+- **Two languages.** English and Brazilian Portuguese, with the level names. The game uses the language of the device. Change it in the pause dialog.
+- **Light and dark themes.** A dark "night candy" palette. Use the round button at the top right of the home screen, or the "Dark mode" row below "Language" in the pause dialog. The theme changes at once, behind a short cover. The game stays on the same screen and in the same state, also in a replay or a random level. The game keeps your choice. With no choice, it follows the device.
 - **Procedural audio.** A script makes all 17 sound effects and the 2 music loops from code. The game keeps them as WAV files.
 - **Adaptive music.** A calm loop plays during the level. The tense loop starts near the move limit, on the beat.
 - **The music opens as you paint.** A filter on the music opens as the board fills with paint.
@@ -99,7 +146,7 @@
 - **Live demo board.** The home screen plays a small level again and again behind the buttons.
 - **Reduced motion.** A switch in the pause dialog makes the shake, the waves, the hit-stop and the particles smaller.
 - **Haptics.** A short vibration when the jellies stop, on phones only. A switch in the pause dialog turns it off.
-- **Performance panel.** Press F3, or long-press the "Pausa" title in the pause dialog. It shows FPS, frame, script, draw and render times, draw calls and the device and GPU names.
+- **Performance panel.** Press F3, or long-press the title of the pause dialog. It shows FPS, frame, script, draw and render times, draw calls and the device and GPU names.
 - **Light on the GPU.** The board art and the vector UI art are baked into atlases, to keep the draw calls low on phones.
 - **Keyboard.** Arrow keys or WASD to swipe, R to restart, Esc or P to pause, F3 for the performance panel.
 
@@ -154,11 +201,11 @@ On WSL, `tools/export.sh` does the full export. It checks the levels, loads each
 
 - `autoload/`: the global nodes: `Game`, `Bus` (signals), `Save`, `Sfx`, `Music`, `Feel`, `Tuning`, `Harness` and `PerfPanel`.
 - `scenes/main/`: the main scene. `scenes/dev/` holds the board and UI lab scenes, which the exports do not include.
-- `scripts/core/`: the pure rules: level parser, level data, par data, slide rules, score rules, session and solver.
-- `scripts/board/`: the board view: jellies, swipe playback, ceremonies, effects, texture bank and the demo board.
-- `scripts/ui/`: the screens, the HUD, the cards, the pause dialog, the text strings and the theme.
+- `scripts/core/`: the pure rules: level parser, level data, par data, slide rules, score rules, session, solver, one-jelly variants and the random level generator.
+- `scripts/board/`: the board view: jellies, swipe playback, replay, ceremonies, effects, texture bank and the demo board.
+- `scripts/ui/`: the screens, the HUD, the cards, the pause dialog, the loading screen, the replay overlay, the text strings in two languages and the theme.
 - `scripts/audio/`: the audio bank and the audio tuning. `scripts/input/` holds the swipe input.
-- `tools/`: the audio bake, the level solver, the load check and `export.sh`.
+- `tools/`: the audio bake, the level solver, the random level check, the load check and `export.sh`.
 - `audio/`: the baked WAV files. `art/icon/` holds the Android icons. `ui/fonts/` holds the Nunito font.
 - `docs/readme/`: the images of this README.
 - `PRIMITIVES.md`: the inventory of the shared contracts of the code.
@@ -171,10 +218,16 @@ Check that each level has a solution and that `par_data.gd` agrees with it:
 godot --headless --path . --script res://tools/levels_tool.gd -- --check
 ```
 
-After a level change, write the new minimum moves into `par_data.gd`:
+After a level change, write the new minimum moves and the one-jelly variants into `par_data.gd`:
 
 ```sh
 godot --headless --path . --script res://tools/levels_tool.gd -- --write
+```
+
+Check the random level generator on 200 seeds:
+
+```sh
+godot --headless --path . --script res://tools/random_tool.gd -- --count=200
 ```
 
 Make all the WAV files again from the code in `tools/audio/`:
@@ -189,12 +242,26 @@ The `Harness` autoload reads arguments after `--`. With no argument, it does not
 
 | Argument | What it does |
 |---|---|
-| `--level=<n>` | Starts level n (1 to 8). |
+| `--level=<n>` | Starts level n (1 to 20). |
 | `--moves=<UDLR>` | Sends the swipes as touch drags, for example `--moves=URUUR`. |
 | `--keys=<UDLR>` | Sends the swipes as key presses. |
-| `--solve` | Plays the solution of the level with the minimum moves. |
+| `--solve` | Plays the solution of the level with the minimum moves. It also works in one-jelly mode and on a random level. |
 | `--play-all` | Solves each level in sequence. |
 | `--screen=home\|levels\|pause` | Opens that screen. `pause` opens after the scripted moves. |
+| `--page=<n>` | With `--screen=levels`, opens page n of the level select screen. |
+| `--solo` | Turns on the one-jelly mode. Needs `--save`. `--solve` and `--play-all` then play the one-jelly version. |
+| `--random[=<seed>]` | Plays a random level, with this seed or a new seed. Does not combine with `--level`, `--play-all` or `--screen`. |
+| `--random-hold=<ms>` | Holds the random level for this time, so the loading screen shows. |
+| `--random-map` | Prints each row of the random map. |
+| `--replay` | Plays the replay when the result card or the defeat card is at rest. Needs `--level` or `--random`. |
+| `--replay-stop-at=<n>` | Stops the replay at move n. |
+| `--lang=pt\|en` | Forces the language for this run. The save does not change. |
+| `--set-lang=pt\|en` | Changes the language through the save at the last state of the run. Needs `--save`. |
+| `--theme=light\|dark` | Forces the theme for this run. The save does not change. |
+| `--switch-theme=light\|dark` | Changes the theme through the save at the `--switch-on` event, as the dark mode row does. |
+| `--switch-on=<event>` | Sets the event for `--switch-theme` (`home` by default). |
+| `--tap=theme` | Sends a real touch to the theme button of the home screen at the `--tap-on` event. |
+| `--tap-on=<event>` | Sets the event for `--tap` (`home` by default). |
 | `--shot=<png> --frames=<n>` | Saves one screenshot after n frames, then quits. |
 | `--shots=<dir> --shot-on=<events>` | Saves a screenshot at each named event. `*` captures all events. |
 | `--quit-at=<event>` | Quits at that event. |
@@ -206,13 +273,14 @@ The `Harness` autoload reads arguments after `--`. With no argument, it does not
 | `--state-log` | Prints the state after each swipe and the result at the end. |
 | `--perf-summary`, `--frame-log` | Prints the frame times, or logs each frame above 25 ms. |
 | `--timeout=<s>` | Stops a stuck run (60 s by default). |
+| `--time-scale=<f>` | Sets the base time scale of the game. |
 
-The events are `home`, `levels`, `level_ready`, `move_<n>_mid`, `move_<n>_end`, `tense`, `win_wave`, `result`, `defeat_wave`, `defeat_card` and `pause`.
+The events are `home`, `levels`, `level_ready`, `move_<n>_mid`, `move_<n>_end`, `tense`, `win_wave`, `result`, `defeat_wave`, `defeat_card`, `pause`, `loading`, `random_ready`, `replay_start`, `replay_move_<n>`, `replay_end`, `lang`, `theme_switched` and `tap`.
 
-Run screenshots in a window, never with `--headless`, because the headless renderer draws nothing. Use `--fixed-fps 60`, so each frame lands at the same moment in each run. This command solves level 8 and saves a screenshot at each event:
+Run screenshots in a window, never with `--headless`, because the headless renderer draws nothing. Use `--fixed-fps 60`, so each frame lands at the same moment in each run. Always pass `--save` with a test file, so the run does not change your own save. This command solves level 8 and saves a screenshot at each event:
 
 ```sh
-godot --path . --fixed-fps 60 --audio-driver Dummy -- --unlock-all --level=8 --solve --shots=/absolute/path/to/shots --shot-on='*'
+godot --path . --fixed-fps 60 --audio-driver Dummy -- --save=/absolute/path/to/test-save.cfg --theme=light --lang=en --unlock-all --level=8 --solve --shots=/absolute/path/to/shots --shot-on='*'
 ```
 
 ## License
