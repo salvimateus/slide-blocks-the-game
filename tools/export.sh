@@ -5,6 +5,7 @@
 #   GODOT         the console build of Godot (default: /mnt/c/Tools/Godot/Godot_v4.7.2-stable_win64_console.exe)
 #   ANDROID_SDK   the Android SDK folder (default: export/android/android_sdk_path of the editor settings)
 #   KEEP_SNAPSHOT set to 1 to keep the snapshot after the run
+#   STEP_TIMEOUT  the time limit of each Godot step, in seconds (default: 1800; the level check takes minutes)
 set -euo pipefail
 
 godot=${GODOT:-/mnt/c/Tools/Godot/Godot_v4.7.2-stable_win64_console.exe}
@@ -42,7 +43,7 @@ run_godot() {
 	printf '\n== %s\n' "$label" | tee -a "$log"
 	local mark code=0
 	mark=$(wc -l < "$log")
-	timeout 600 "${cmd[@]}" 2>&1 | tr -d '\r' | tee -a "$log" || code=$?
+	timeout "${STEP_TIMEOUT:-1800}" "${cmd[@]}" 2>&1 | tr -d '\r' | tee -a "$log" || code=$?
 	[[ $code -eq 0 ]] || fail "step '$label' failed with exit code $code (log: build/export.log)"
 	if tail -n +"$((mark + 1))" "$log" | grep -qE "$pattern"; then
 		fail "step '$label' printed an error line (log: build/export.log)"
