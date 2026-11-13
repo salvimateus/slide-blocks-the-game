@@ -1,6 +1,7 @@
 extends Node
-## The game flow: boot, screens, levels, swipes, ceremonies and results.
-## main.gd calls boot() after all autoloads are ready. Touch, keys and the harness share one swipe path.
+## The game flow: boot, screens, levels, swipes, ceremonies and results, the one-jelly mode, the random level job
+## and the replay of the last game. main.gd calls boot() after all autoloads are ready.
+## Touch, keys and the harness share one swipe path. A replay plays on the board with no rule-time signal.
 
 const Palette := preload("res://scripts/core/palette.gd")
 const LevelsData := preload("res://scripts/core/levels_data.gd")
@@ -8,6 +9,8 @@ const LevelParser := preload("res://scripts/core/level_parser.gd")
 const ParData := preload("res://scripts/core/par_data.gd")
 const Session := preload("res://scripts/core/session.gd")
 const ScoreRules := preload("res://scripts/core/score_rules.gd")
+const LevelModes := preload("res://scripts/core/level_modes.gd")
+const RandomLevel := preload("res://scripts/core/random_level.gd")
 const Strings := preload("res://scripts/ui/strings.gd")
 const UiTheme := preload("res://scripts/ui/ui_theme.gd")
 const UiTuning := preload("res://scripts/ui/ui_tuning.gd")
@@ -16,6 +19,7 @@ const Background := preload("res://scripts/board/background.gd")
 const BoardView := preload("res://scripts/board/board_view.gd")
 const DemoBoard := preload("res://scripts/board/demo_board.gd")
 const FxPool := preload("res://scripts/board/fx_pool.gd")
+const ReplayRunner := preload("res://scripts/board/replay_runner.gd")
 const SwipeInput := preload("res://scripts/input/swipe_input.gd")
 const HomeScreen := preload("res://scripts/ui/home_screen.gd")
 const LevelSelectScreen := preload("res://scripts/ui/level_select_screen.gd")
@@ -23,6 +27,8 @@ const Hud := preload("res://scripts/ui/hud.gd")
 const PauseDialog := preload("res://scripts/ui/pause_dialog.gd")
 const ResultCard := preload("res://scripts/ui/result_card.gd")
 const DefeatCard := preload("res://scripts/ui/defeat_card.gd")
+const LoadingScreen := preload("res://scripts/ui/loading_screen.gd")
+const ReplayOverlay := preload("res://scripts/ui/replay_overlay.gd")
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 const ACTIONS := {
@@ -60,11 +66,21 @@ var _hud: Control
 var _pause: Control
 var _result: Control
 var _defeat: Control
+var _loading: Control
+var _replay_overlay: Control
+var _replay: Node
 
 var _rng := RandomNumberGenerator.new()
 var _level: RefCounted
 var _session: RefCounted
-## &"off" outside a level, then &"intro", &"play", &"ceremony", &"card".
+## {"min", "solution"} of the current level.
+var _par: Dictionary = {}
+## &"normal", &"solo" or &"random".
+var _mode: StringName = &"normal"
+var _seed := 0
+## The block rule of the current random level: true for one block.
+var _random_solo := false
+## &"off" outside a level, then &"intro", &"play", &"ceremony", &"card", and &"replay" while a replay plays over the card.
 var _phase: StringName = &"off"
 var _swiping := false
 var _queued := -1
@@ -80,6 +96,21 @@ var _quitting := false
 var _cover_up := false
 ## The tension state last sent on the Bus.
 var _tense_on := false
+
+# Replay.
+var _replay_card: Control
+## The end of a replay waits for its card to be at rest; restart, leave and a new replay send it at once.
+var _replay_end_pending := false
+var _replay_end_completed := false
+var _replay_end_matched := false
+
+# Random level job.
+var _job_active := false
+var _job_serial := 0
+var _job_cancel: RefCounted
+var _job_prev_screen: StringName = &""
+var _threads: Array[Thread] = []
+var _random_hold_ms := 0
 
 
 func _ready() -> void:
@@ -157,6 +188,11 @@ func boot(host: Node) -> void:
 	_board.intro_finished.connect(_on_intro_finished)
 	_board.restart_finished.connect(_on_intro_finished)
 	_board.ceremonies.finished.connect(_on_ceremony_finished)
+	_replay = ReplayRunner.new()
+	world.add_child(_replay)
+	_replay.setup(_board)
+	_replay.stepped.connect(_on_replay_stepped)
+	_replay.finished.connect(_on_replay_finished)
 
 	var ui := CanvasLayer.new()
 	ui.layer = UI_LAYER
@@ -167,9 +203,16 @@ func boot(host: Node) -> void:
 	_result = ResultCard.new()
 	_defeat = DefeatCard.new()
 	_pause = PauseDialog.new()
-	for node: Control in [_hud, _home, _levels, _result, _defeat, _pause]:
+	_replay_overlay = ReplayOverlay.new()
+	_loading = LoadingScreen.new()
+	for node: Control in [_hud, _replay_overlay, _home, _levels, _result, _defeat, _pause, _loading]:
 		ui.add_child(node)
 	_hud.board_rect_changed.connect(_on_board_rect_changed)
+	_replay_overlay.stop_requested.connect(stop_replay)
+	_loading.cancel_requested.connect(cancel_random)
+	_loading.opened.connect(_on_loading_opened)
+	_result.opened.connect(_emit_replay_end)
+	_defeat.opened.connect(_emit_replay_end)
 
 	_input = SwipeInput.new()
 	host.add_child(_input)
@@ -245,12 +288,7 @@ func _warm_up(ui: CanvasLayer) -> void:
 		fx.streak_on(b, true)
 	_hud.open()
 
-	var text := ""
-	for key: String in Strings.TABLE:
-		for c in String(Strings.TABLE[key]):
-			if not text.contains(c):
-				text += c
-	text += "0123456789"
+	var text := Strings.all_text() + "0123456789"
 	var glyphs := VBoxContainer.new()
 	glyphs.modulate.a = 0.01
 	ui.add_child(glyphs)
@@ -292,12 +330,13 @@ func _warm_up_bake(level: RefCounted, hues: PackedInt32Array) -> void:
 		"level_index": level.index, "level_id": level.id, "status": &"won", "moves": t.min, "stars": 3,
 		"range_lo": t.min, "range_hi": t.three_max, "time_ms": 0, "min": t.min, "three_max": t.three_max,
 		"two_max": t.two_max, "limit": t.limit, "painted": level.floor_count, "floor": level.floor_count,
-		"new_best": true, "is_last": false, "next_unlocked": true,
+		"new_best": true, "is_last": false, "next_unlocked": true, "mode": &"normal", "seed": 0, "can_replay": true,
 	}
 	_hud.call("_on_session_changed", session.snapshot())
 	_result.call("_fill", sample)
 	_defeat.call("_fill", sample)
-	var screens: Array[Control] = [_home, _levels, _result, _defeat, _pause]
+	_pause.call("_fill", {"solo": &"ready", "mode_solo": false})
+	var screens: Array[Control] = [_home, _levels, _result, _defeat, _pause, _replay_overlay, _loading]
 	for node in screens:
 		node.visible = true
 		node.modulate.a = 0.01
@@ -305,6 +344,15 @@ func _warm_up_bake(level: RefCounted, hues: PackedInt32Array) -> void:
 		await get_tree().process_frame
 	for node: Control in screens + [_hud]:
 		_prewarm_tree(node)
+	# The rows of a random level show only then: lay them out and ask for their icons too.
+	var random_sample := sample.duplicate()
+	random_sample.merge({"mode": &"random", "level_index": -1, "seed": RandomLevel.SEED_MAX, "next_unlocked": false}, true)
+	_result.call("_fill", random_sample)
+	_defeat.call("_fill", random_sample)
+	for i in 2:
+		await get_tree().process_frame
+	_prewarm_tree(_result)
+	_prewarm_tree(_defeat)
 	var frames := 0
 	while not UiBake.is_idle() and frames < 240:
 		await get_tree().process_frame
@@ -335,6 +383,8 @@ func _register_actions() -> void:
 func open_home() -> void:
 	if not _booted:
 		return
+	if _job_active:
+		cancel_random()
 	_leave_level()
 	_levels.close()
 	_demo.visible = true
@@ -344,50 +394,76 @@ func open_home() -> void:
 	_announce_on_open(_home, &"home")
 
 
-func open_levels() -> void:
+## Opens the level select screen. A `page` below 0 opens the page of the highest open level.
+func open_levels(page: int = -1) -> void:
 	if not _booted:
 		return
+	if _job_active:
+		cancel_random()
 	_leave_level()
 	_home.close()
 	_demo.stop()
 	_demo.visible = false
-	_levels.open()
+	if page >= 0:
+		_levels.open({"page": page})
+	else:
+		_levels.open()
 	_set_screen(&"levels", false)
 	_announce_on_open(_levels, &"levels")
 
 
+## Starts a level of LevelsData in the mode of the `solo` setting: its one-jelly version when it has one.
 func start_level(index: int) -> void:
 	if not _booted or index < 0 or index >= LevelsData.LEVELS.size():
 		return
-	_leave_level()
-	_home.close()
-	_levels.close()
-	_demo.stop()
-	_demo.visible = false
-	level_index = index
-	_level = LevelParser.parse(LevelsData.LEVELS[index], index)
-	var hues := _pick_hues()
-	_new_session(hues)
-	_board.build(_level, hues)
-	_board.visible = true
-	_hud.open()
-	Bus.level_loaded.emit(index)
-	Bus.session_changed.emit(_session.snapshot())
-	_set_screen(&"level")
-	_phase = &"intro"
-	# The HUD lays out its board area on the next frame.
-	_board.modulate.a = 0.0
-	await get_tree().process_frame
-	if _level == null or level_index != index or _phase != &"intro":
+	if _job_active:
+		cancel_random()
+	var solo: bool = Save.setting(&"solo")
+	var level := LevelParser.parse(LevelModes.def_for(index, solo), index)
+	_begin_level(level, LevelModes.par_for(level.id), index, LevelModes.info(index, solo))
+
+
+## Makes the random level of `seed_value` on a worker thread, then starts it. A seed below
+## RandomLevel.SEED_MIN takes a new seed. The block rule follows the `solo` setting.
+## The screen below stays open; the loading screen blocks input, and shows only when the job takes time.
+func start_random(seed_value: int = -1) -> void:
+	if not _booted or _job_active or _phase == &"replay":
 		return
-	_board.modulate.a = 1.0
-	_board.fit(_hud.board_rect())
-	_board.play_intro()
+	var seed_used := seed_value
+	if seed_used < RandomLevel.SEED_MIN:
+		seed_used = _rng.randi_range(RandomLevel.SEED_MIN, RandomLevel.SEED_MAX)
+	_job_prev_screen = screen
+	_job_active = true
+	_job_serial += 1
+	_job_cancel = RandomLevel.Cancel.new()
+	var serial := _job_serial
+	var thread := Thread.new()
+	_threads.append(thread)
+	thread.start(_run_job.bind(serial, seed_used, bool(Save.setting(&"solo")), _job_cancel, thread))
+	_loading.open({"seed": seed_used})
+	get_tree().create_timer(UiTuning.RANDOM_LOADING_DELAY, true, false, true).timeout.connect(_reveal_loading.bind(serial))
+
+
+## Stops the random level job. The screen below the loading screen stays as it was.
+func cancel_random() -> void:
+	if not _job_active:
+		return
+	_job_cancel.cancelled = true
+	_job_active = false
+	_job_serial += 1
+	_close_loading()
+	screen = _job_prev_screen
+
+
+## Holds a ready random level this long before it starts, so a run can see the loading screen. Harness only.
+func set_random_hold(ms: int) -> void:
+	_random_hold_ms = maxi(ms, 0)
 
 
 func restart() -> void:
-	if not _booted or _level == null or _phase == &"off":
+	if not _booted or _level == null or _phase == &"off" or _job_active:
 		return
+	_abort_replay(true)
 	if _paused:
 		_set_pause_state(false)
 	_result.close()
@@ -404,16 +480,25 @@ func restart() -> void:
 
 
 func next_level() -> void:
+	if _mode == &"random":
+		return
 	if level_index + 1 < LevelsData.LEVELS.size():
 		start_level(level_index + 1)
 
 
+## A change of the `solo` setting in the pause dialog applies when the play goes on: the level starts again in the new mode.
 func set_paused(on: bool) -> void:
 	if not _booted or on == _paused:
 		return
 	if on and not (screen == &"level" and _phase != &"off" and _phase != &"card"):
 		return
 	_set_pause_state(on)
+	if on or not _mode_change_pending():
+		return
+	if _mode == &"random":
+		start_random(_seed)
+	else:
+		start_level(level_index)
 
 
 func request_swipe(dir: int) -> void:
@@ -438,12 +523,51 @@ func skip_ceremony() -> void:
 			_defeat.skip()
 
 
+## True when the open card can show a replay of its game.
+func can_replay() -> bool:
+	return _phase == &"card" and _session != null and _session.history != "" and not _job_active and not _paused
+
+
+## Plays the moves of the last game on the board, from its start state, over the card. The card returns at the end.
+func play_replay() -> void:
+	if not can_replay():
+		return
+	_emit_replay_end()
+	_replay_card = _result if _result.is_open else _defeat
+	var total: int = _session.history.length()
+	_replay_card.close()
+	_hud.close()
+	_phase = &"replay"
+	_set_screen(&"replay", false)
+	_replay_overlay.open({"total": total})
+	Bus.replay_started.emit(total)
+	_replay.play(_level, _session.hues, int(_par.min), _session.history)
+
+
+## Ends the replay where it is; the card returns.
+func stop_replay() -> void:
+	if _phase == &"replay":
+		_replay.stop()
+
+
+## The moves of the baked or generated solution of the current level, "" outside a level.
+func current_solution() -> String:
+	return String(_par.get("solution", ""))
+
+
 ## Stops the audio, gives the audio server time to free its voices, then quits.
 ## Without the wait, a quit during a sound leaks the playing voices.
 func quit(code: int = 0) -> void:
 	if _quitting:
 		return
 	_quitting = true
+	if _job_cancel != null:
+		_job_cancel.cancelled = true
+	_job_active = false
+	for thread in _threads:
+		if thread.is_started():
+			thread.wait_to_finish()
+	_threads.clear()
 	Save.flush()
 	Sfx.silence()
 	Music.stop()
@@ -458,14 +582,48 @@ func snapshot() -> Dictionary:
 	data["screen"] = screen
 	data["time_ms"] = _elapsed_ms()
 	data["paused"] = _paused
+	data["mode"] = _mode
+	data["seed"] = _seed
 	return data
 
 
 # --- Level flow --------------------------------------------------------------
 
+## Builds `level` and plays its intro. `info` is the level info of Bus.level_loaded.
+func _begin_level(level: RefCounted, par: Dictionary, index: int, info: Dictionary) -> void:
+	_leave_level()
+	_close_loading()
+	_home.close()
+	_levels.close()
+	_demo.stop()
+	_demo.visible = false
+	level_index = index
+	_level = level
+	_par = par
+	_mode = info.mode
+	_seed = int(info.seed)
+	_random_solo = bool(info.solo)
+	var hues := _pick_hues()
+	_new_session(hues)
+	_board.build(_level, hues)
+	_board.visible = true
+	_hud.open()
+	Bus.level_loaded.emit(index, info)
+	Bus.session_changed.emit(_session.snapshot())
+	_set_screen(&"level")
+	_phase = &"intro"
+	# The HUD lays out its board area on the next frame.
+	_board.modulate.a = 0.0
+	await get_tree().process_frame
+	if not is_same(_level, level) or _phase != &"intro":
+		return
+	_board.modulate.a = 1.0
+	_board.fit(_hud.board_rect())
+	_board.play_intro()
+
+
 func _new_session(hues: PackedInt32Array) -> void:
-	var par: Dictionary = ParData.PAR[_level.id]
-	_session = Session.new(_level, int(par.min), hues)
+	_session = Session.new(_level, int(_par.min), hues)
 	_swiping = false
 	_queued = -1
 	_last_outcome = {}
@@ -531,6 +689,8 @@ func _end_level(status: StringName) -> void:
 		_set_tension(false)
 
 
+## Game is the only caller of Save.record. A random level has no record and opens no level.
+## A one-jelly win opens the next level as a normal win does.
 func _on_ceremony_finished(_kind: StringName) -> void:
 	if _phase != &"ceremony":
 		return
@@ -538,13 +698,14 @@ func _on_ceremony_finished(_kind: StringName) -> void:
 	var won: bool = _session.status == &"won"
 	var summary := _summary(won)
 	if won:
-		var next := level_index + 1
-		var was_open := next < LevelsData.LEVELS.size() and Save.is_unlocked(next)
-		var rec := Save.record(_level.id, int(summary.stars), int(summary.moves), int(summary.time_ms))
-		summary["new_best"] = bool(rec.get("new_best", false))
-		summary["next_unlocked"] = next < LevelsData.LEVELS.size() and Save.is_unlocked(next)
-		if summary.next_unlocked and not was_open:
-			Bus.level_unlocked.emit(next)
+		if _mode != &"random":
+			var next := level_index + 1
+			var was_open := next < LevelsData.LEVELS.size() and Save.is_unlocked(next)
+			var rec := Save.record(_level.id, int(summary.stars), int(summary.moves), int(summary.time_ms))
+			summary["new_best"] = bool(rec.get("new_best", false))
+			summary["next_unlocked"] = next < LevelsData.LEVELS.size() and Save.is_unlocked(next)
+			if summary.next_unlocked and not was_open:
+				Bus.level_unlocked.emit(next)
 		Bus.level_won.emit(summary)
 	else:
 		Bus.level_lost.emit(summary)
@@ -578,19 +739,22 @@ func _summary(won: bool) -> Dictionary:
 	var t: Dictionary = _session.thresholds
 	var stars: int = _session.stars() if won else 0
 	var span: Vector2i = ScoreRules.range_for(stars, t) if won else Vector2i(0, 0)
+	var random := _mode == &"random"
 	var next := level_index + 1
 	return {
 		"level_index": level_index, "level_id": _level.id, "status": _session.status,
 		"moves": _session.moves_used, "stars": stars, "range_lo": span.x, "range_hi": span.y,
 		"time_ms": _elapsed_ms(), "min": t.min, "three_max": t.three_max, "two_max": t.two_max, "limit": t.limit,
 		"painted": _session.painted_count, "floor": _level.floor_count,
-		"new_best": false, "is_last": next >= LevelsData.LEVELS.size(),
-		"next_unlocked": next < LevelsData.LEVELS.size() and Save.is_unlocked(next),
+		"new_best": false, "is_last": not random and next >= LevelsData.LEVELS.size(),
+		"next_unlocked": not random and next < LevelsData.LEVELS.size() and Save.is_unlocked(next),
+		"mode": _mode, "seed": _seed, "can_replay": _session.history != "",
 	}
 
 
 ## Closes the level screens and stops the board. No effect outside a level.
 func _leave_level() -> void:
+	_abort_replay(false)
 	if _paused:
 		_set_pause_state(false)
 	if _phase == &"off":
@@ -620,7 +784,7 @@ func _set_tension(on: bool) -> void:
 
 func _set_screen(value: StringName, announce: bool = true) -> void:
 	screen = value
-	if value != &"level" and value != &"result" and value != &"defeat":
+	if not (value in [&"level", &"result", &"defeat", &"replay", &"loading"]):
 		Music.set_fill(1.0)
 	if announce and not _cover_up:
 		Bus.screen_changed.emit(value)
@@ -631,13 +795,32 @@ func _set_pause_state(on: bool) -> void:
 	get_tree().paused = on
 	if on:
 		_pause_since = Time.get_ticks_msec()
-		_pause.open()
+		_pause.open(_pause_data())
 	else:
 		if _pause_since > 0:
 			_pause_total += Time.get_ticks_msec() - _pause_since
 		_pause_since = 0
 		_pause.close()
 	Bus.paused_changed.emit(on)
+
+
+## {"solo": the one-jelly state of the level, "mode_solo": true when the level plays its one-jelly version}.
+## A random level can always change its block rule.
+func _pause_data() -> Dictionary:
+	if _mode == &"random":
+		return {"solo": &"ready", "mode_solo": _random_solo}
+	return {"solo": LevelModes.solo_state(level_index), "mode_solo": _mode == &"solo"}
+
+
+func _mode_change_pending() -> bool:
+	if _level == null:
+		return false
+	var solo: bool = Save.setting(&"solo")
+	if _mode == &"random":
+		return solo != _random_solo
+	if LevelModes.solo_state(level_index) != &"ready":
+		return false
+	return solo != (_mode == &"solo")
 
 
 func _elapsed_ms() -> int:
@@ -655,18 +838,26 @@ func _in_play() -> bool:
 
 
 ## Esc, P and the Android back key: the pause dialog in a level, one screen back elsewhere.
-## The back key on Home quits the app; Esc on Home does nothing.
+## The back key on Home quits the app; Esc on Home does nothing. A random level job and a replay stop first.
 func _back(system: bool) -> void:
 	if not _booted:
 		return
 	if PerfPanel.is_open():
 		PerfPanel.toggle()
 		return
+	if _job_active:
+		cancel_random()
+		return
 	match screen:
 		&"level":
 			set_paused(not _paused)
+		&"replay":
+			stop_replay()
 		&"result", &"defeat":
-			open_levels()
+			if _mode == &"random":
+				open_home()
+			else:
+				open_levels()
 		&"levels":
 			open_home()
 		&"home":
@@ -677,6 +868,104 @@ func _back(system: bool) -> void:
 func _on_tapped() -> void:
 	if _phase == &"ceremony" and not _paused:
 		_board.ceremonies.skip()
+
+
+# --- Replay ------------------------------------------------------------------
+
+func _on_replay_stepped(n: int, total: int) -> void:
+	if _phase != &"replay":
+		return
+	_replay_overlay.set_step(n, total)
+	Bus.replay_step.emit(n, total)
+
+
+func _on_replay_finished(completed: bool, positions: PackedInt32Array, painted: int) -> void:
+	if _phase != &"replay":
+		return
+	_phase = &"card"
+	_replay_overlay.close()
+	_hud.open()
+	screen = &"result" if _replay_card == _result else &"defeat"
+	_replay_end_pending = true
+	_replay_end_completed = completed
+	_replay_end_matched = completed and positions == _session.positions and painted == _session.painted_count
+	_replay_card.reopen()
+
+
+## Sends the pending end of a replay; a card emits `opened` when it is at rest again.
+func _emit_replay_end() -> void:
+	if not _replay_end_pending:
+		return
+	_replay_end_pending = false
+	Bus.replay_finished.emit(_replay_end_completed, _replay_end_matched)
+
+
+## Ends a replay at once for a restart or a leave, with no card. `for_restart` opens the HUD again.
+func _abort_replay(for_restart: bool) -> void:
+	if _phase != &"replay":
+		_emit_replay_end()
+		return
+	_phase = &"card"
+	_replay.stop()
+	_replay_overlay.close()
+	if for_restart:
+		_hud.open()
+	Bus.replay_finished.emit(false, false)
+
+
+# --- Random level ------------------------------------------------------------
+
+## Runs on the worker thread: it reads no member and touches no node.
+func _run_job(serial: int, seed_value: int, solo: bool, cancel: RefCounted, thread: Thread) -> void:
+	var start := Time.get_ticks_msec()
+	var result: Dictionary = RandomLevel.generate(seed_value, solo, cancel)
+	result["ms"] = Time.get_ticks_msec() - start
+	_on_job_done.call_deferred(serial, seed_value, result, thread)
+
+
+func _on_job_done(serial: int, seed_value: int, result: Dictionary, thread: Thread) -> void:
+	if thread.is_started():
+		thread.wait_to_finish()
+	_threads.erase(thread)
+	if serial != _job_serial or not _job_active or result.has("cancelled"):
+		return
+	if result.size() <= 1:
+		push_error("Game: no random level for seed %d" % seed_value)
+		_job_active = false
+		_close_loading()
+		screen = _job_prev_screen
+		return
+	if _random_hold_ms > 0:
+		await get_tree().create_timer(_random_hold_ms / 1000.0, true, false, true).timeout
+		if serial != _job_serial or not _job_active:
+			return
+	_job_active = false
+	var level: RefCounted = result.level
+	var t := ScoreRules.thresholds(int(result.min), RandomLevel.SCORE_INDEX)
+	Bus.level_generated.emit({
+		"seed": seed_value, "solo": result.solo, "blocks": result.blocks, "cols": level.cols, "rows": level.rows,
+		"floor": level.floor_count, "deflectors": result.deflectors, "min": result.min, "three_max": t.three_max,
+		"two_max": t.two_max, "limit": t.limit, "tension_moves": t.tension_moves, "states": result.states,
+		"attempts": result.attempts, "ms": result.ms, "map": result.def.rows,
+	})
+	_begin_level(level, {"min": result.min, "solution": result.solution}, -1, {
+		"mode": &"random", "index": -1, "seed": seed_value, "solo": result.solo, "name_key": "", "hint_key": "",
+	})
+
+
+func _reveal_loading(serial: int) -> void:
+	if _job_active and serial == _job_serial:
+		_loading.reveal()
+
+
+func _on_loading_opened() -> void:
+	if _job_active:
+		_set_screen(&"loading")
+
+
+func _close_loading() -> void:
+	if _loading.is_open:
+		_loading.close()
 
 
 # --- Layout and options ------------------------------------------------------

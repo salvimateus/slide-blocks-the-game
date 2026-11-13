@@ -69,7 +69,17 @@ const LOCKED_SHAKE := 14.0
 const LOCKED_SHAKE_TIME := 0.35
 const CARD_STAGGER := 0.04             # level select cards pop in a stagger
 const CARD_POP_TIME := 0.35
+const LEVELS_PAGE_SIZE := 8            # level select cards on one page: 2 columns x 4 rows
+const THUMB_MAX_PIXEL_SCALE := 1.25    # level thumbnails bake at most at this pixel scale, so all looks fit one atlas
+const LEVELS_PAGE_GAP := 48.0          # space between two pages of the strip, so a sliding page never shows its neighbour
+const LEVELS_PAGE_TIME := 0.32
+const PAGE_DOT_SIZE := 16.0
 const SWITCH_TIME := 0.22
+
+# Random level loading.
+const RANDOM_LOADING_DELAY := 0.25     # real seconds before the loading screen fades in
+const LOADING_BOB := 12.0
+const LOADING_BOB_TIME := 0.45
 
 # Home title.
 const TITLE_DROP := 120.0

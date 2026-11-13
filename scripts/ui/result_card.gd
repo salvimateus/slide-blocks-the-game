@@ -1,8 +1,8 @@
 extends "res://scripts/ui/card_screen.gd"
 ## The win card: stars that pop one by one, the time and the moves that count up, the range bar with a marker,
 ## the range sentence and the next steps. open() takes the summary dictionary of Bus.level_won.
+## A random level offers a new random level and Home in place of the next level and the level select.
 
-const LevelsData := preload("res://scripts/core/levels_data.gd")
 const RangeBar := preload("res://scripts/ui/range_bar.gd")
 
 const STAR_SIZES: Array[float] = [104.0, 132.0, 104.0]
@@ -18,12 +18,18 @@ var _bar: Control
 var _sentence: Label
 var _all_done: Label
 var _next_button: Button
+var _new_random_button: Button
+var _replay_button: Button
+var _levels_button: Button
+var _home_button: Button
 var _summary: Dictionary = {}
 
 
 func _init() -> void:
 	super()
-	stack.add_child(UiTheme.label(Strings.t("result_title"), UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK))
+	var title := UiTheme.label("", UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK)
+	Strings.bind(title, "result_title")
+	stack.add_child(title)
 	_subtitle = UiTheme.label("", UiTuning.SIZE_SMALL + 2, UiTuning.WEIGHT_BODY, Palette.INK_SOFT)
 	stack.add_child(_subtitle)
 
@@ -50,7 +56,9 @@ func _init() -> void:
 	_badge_holder.custom_minimum_size.y = 44.0
 	stack.add_child(_badge_holder)
 	_badge = UiTheme.panel(UiTheme.pad(UiTheme.box(UiTheme.ZONE_THREE, 22, Palette.STAR_DEEP, 3), 20, 2))
-	_badge.add_child(UiTheme.label(Strings.t("result_new_best"), UiTuning.SIZE_SMALL, UiTuning.WEIGHT_BOLD, Palette.INK))
+	var badge_label := UiTheme.label("", UiTuning.SIZE_SMALL, UiTuning.WEIGHT_BOLD, Palette.INK)
+	Strings.bind(badge_label, "result_new_best")
+	_badge.add_child(badge_label)
 	_badge.resized.connect(func() -> void: _badge.pivot_offset = _badge.size / 2.0)
 	_badge_holder.add_child(_badge)
 
@@ -63,23 +71,34 @@ func _init() -> void:
 	stack.add_child(_bar)
 	_sentence = UiTheme.paragraph("", UiTuning.SIZE_SMALL, UiTuning.WEIGHT_BODY, Palette.INK)
 	stack.add_child(_sentence)
-	_all_done = UiTheme.paragraph(Strings.t("result_all_done"), UiTuning.SIZE_BODY, UiTuning.WEIGHT_BOLD, Palette.INK)
+	_all_done = UiTheme.paragraph("", UiTuning.SIZE_BODY, UiTuning.WEIGHT_BOLD, Palette.INK)
+	Strings.bind(_all_done, "result_all_done")
 	stack.add_child(_all_done)
 
 	stack.add_child(UiTheme.spacer(2))
 	_next_button = _button(JuicyButton.Kind.PRIMARY, "result_next", &"play", UiTuning.BUTTON_HEIGHT_HERO)
 	_next_button.pressed.connect(func() -> void: Game.next_level())
 	stack.add_child(_next_button)
+	_new_random_button = _button(JuicyButton.Kind.PRIMARY, "random_new", &"dice", UiTuning.BUTTON_HEIGHT_HERO)
+	_new_random_button.pressed.connect(func() -> void: Game.start_random())
+	stack.add_child(_new_random_button)
+	_replay_button = _button(JuicyButton.Kind.SECONDARY, "replay_button", &"replay")
+	_replay_button.pressed.connect(func() -> void: Game.play_replay())
+	stack.add_child(_replay_button)
 	var row := UiTheme.hbox(16)
 	stack.add_child(row)
 	var retry := _button(JuicyButton.Kind.SECONDARY, "result_retry", &"restart")
 	retry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	retry.pressed.connect(func() -> void: Game.restart())
 	row.add_child(retry)
-	var levels := _button(JuicyButton.Kind.SECONDARY, "result_levels", &"grid")
-	levels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	levels.pressed.connect(func() -> void: Game.open_levels())
-	row.add_child(levels)
+	_levels_button = _button(JuicyButton.Kind.SECONDARY, "result_levels", &"grid")
+	_levels_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_levels_button.pressed.connect(func() -> void: Game.open_levels())
+	row.add_child(_levels_button)
+	_home_button = _button(JuicyButton.Kind.SECONDARY, "random_home", &"back")
+	_home_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_home_button.pressed.connect(func() -> void: Game.open_home())
+	row.add_child(_home_button)
 
 
 func _stat(parent: Control, key: String) -> Label:
@@ -88,7 +107,9 @@ func _stat(parent: Control, key: String) -> Label:
 	parent.add_child(pill)
 	var box := UiTheme.vbox(-4)
 	pill.add_child(box)
-	box.add_child(UiTheme.label(Strings.t(key), UiTuning.SIZE_TINY + 2, UiTuning.WEIGHT_BOLD, Palette.INK_SOFT))
+	var name_label := UiTheme.label("", UiTuning.SIZE_TINY + 2, UiTuning.WEIGHT_BOLD, Palette.INK_SOFT)
+	Strings.bind(name_label, key)
+	box.add_child(name_label)
 	var value := UiTheme.label("", UiTuning.SIZE_STAT, UiTuning.WEIGHT_BOLD, Palette.INK)
 	box.add_child(value)
 	return value
@@ -96,15 +117,18 @@ func _stat(parent: Control, key: String) -> Label:
 
 func _fill(data: Dictionary) -> void:
 	_summary = data
-	var index: int = data.get("level_index", 0)
-	var def: Dictionary = LevelsData.LEVELS[clampi(index, 0, LevelsData.LEVELS.size() - 1)]
-	_subtitle.text = Strings.t("level_subtitle", {"n": index + 1, "name": Strings.t(def.name_key)})
+	_subtitle.text = _subtitle_for(data)
 	var stars: int = data.get("stars", 0)
 	var vars := {"stars": stars, "lo": data.get("range_lo", 0), "hi": data.get("range_hi", 0), "moves": data.get("moves", 0)}
 	_sentence.text = Strings.t("result_range_one" if stars == 1 else "result_range", vars)
+	var random: bool = data.get("mode", &"normal") == &"random"
 	var is_last: bool = data.get("is_last", false)
-	_next_button.visible = not is_last
-	_all_done.visible = is_last
+	_next_button.visible = not random and not is_last and data.get("next_unlocked", false)
+	_all_done.visible = not random and is_last
+	_new_random_button.visible = random
+	_levels_button.visible = not random
+	_home_button.visible = random
+	_replay_button.visible = data.get("can_replay", false)
 	_bar.setup(data, true)
 	_set_counts(0.0)
 	for fill in _star_fills:

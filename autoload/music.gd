@@ -148,7 +148,7 @@ func _connect_bus() -> void:
 	Bus.session_changed.connect(_on_session_changed)
 	Bus.ceremony_started.connect(_on_ceremony_started)
 	Bus.ceremony_finished.connect(_on_ceremony_finished)
-	Bus.level_loaded.connect(_on_level_reset)
+	Bus.level_loaded.connect(_on_level_reset.unbind(1))
 	Bus.level_restarted.connect(_on_level_reset)
 	Bus.paused_changed.connect(_on_paused_changed)
 	Bus.setting_changed.connect(_on_setting_changed)

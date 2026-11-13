@@ -1,7 +1,7 @@
 extends Control
 ## A vector icon. It draws one time in a 100 x 100 box scaled to the control, and again only when its look changes.
 ## Kinds: pause, restart, lock, star, star_empty, speaker, music, vibrate, motion, back, play, grid, knob, touch,
-## chevrons_left, jelly_sad, jelly_happy.
+## chevrons_left, jelly_sad, jelly_happy, globe, replay, dice.
 
 const Palette := preload("res://scripts/core/palette.gd")
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
@@ -25,6 +25,13 @@ var accent := Palette.STAR:
 	set(value):
 		if accent != value:
 			accent = value
+			queue_redraw()
+## Draws the icon mirrored left to right. The baked texture is the same, so a mirrored icon costs no new bake.
+## A container resets the scale of its children, so a negative scale cannot do this.
+var mirrored := false:
+	set(value):
+		if mirrored != value:
+			mirrored = value
 			queue_redraw()
 ## False for the copy that the baker draws in vector form.
 var bakeable := true
@@ -83,12 +90,14 @@ func _draw() -> void:
 	var s := minf(size.x, size.y) / 100.0
 	if s <= 0.0:
 		return
+	var flip := Transform2D(Vector2(-1.0, 0.0), Vector2(0.0, 1.0), Vector2(size.x, 0.0)) if mirrored else Transform2D.IDENTITY
 	if bakeable:
 		var tex := _fetch(kind, self)
 		if tex != null:
+			draw_set_transform_matrix(flip)
 			draw_texture_rect(tex, _bake_rect(), false)
 			return
-	draw_set_transform((size - Vector2(100.0, 100.0) * s) / 2.0, 0.0, Vector2(s, s))
+	draw_set_transform_matrix(flip * Transform2D(0.0, Vector2(s, s), 0.0, (size - Vector2(100.0, 100.0) * s) / 2.0))
 	match kind:
 		&"pause":
 			_rbox(Rect2(26, 18, 17, 64), 7, color)
@@ -145,6 +154,19 @@ func _draw() -> void:
 			_draw_jelly(false)
 		&"jelly_happy":
 			_draw_jelly(true)
+		&"globe":
+			draw_arc(Vector2(50, 50), 36, 0.0, TAU, 48, color, 7, true)
+			_ellipse_outline(Vector2(50, 50), Vector2(16, 36), 6)
+			_round_line(Vector2(14, 50), Vector2(86, 50), 6)
+		&"replay":
+			_draw_restart()
+			_poly([Vector2(43, 37), Vector2(43, 63), Vector2(65, 50)], color)
+		&"dice":
+			var face := Rect2(16, 16, 68, 68)
+			_rbox(face.grow(3.5), 19.5, color)
+			_rbox(face.grow(-3.5), 12.5, accent)
+			for p: Vector2 in [Vector2(34, 34), Vector2(66, 34), Vector2(50, 50), Vector2(34, 66), Vector2(66, 66)]:
+				draw_circle(p, 7, color, true, -1.0, true)
 
 
 func _draw_restart() -> void:
@@ -229,6 +251,15 @@ func _round_line(a: Vector2, b: Vector2, width: float) -> void:
 	draw_line(a, b, color, width, true)
 	draw_circle(a, width / 2.0, color, true, -1.0, true)
 	draw_circle(b, width / 2.0, color, true, -1.0, true)
+
+
+func _ellipse_outline(center: Vector2, radii: Vector2, width: float) -> void:
+	var points := PackedVector2Array()
+	var segments := 40
+	for i in segments + 1:
+		var a := TAU * i / segments
+		points.append(center + Vector2(cos(a) * radii.x, sin(a) * radii.y))
+	draw_polyline(points, color, width, true)
 
 
 func _poly(points: Variant, c: Color) -> void:

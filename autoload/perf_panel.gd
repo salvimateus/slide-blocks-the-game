@@ -254,20 +254,20 @@ func _build() -> void:
 	var column := VBoxContainer.new()
 	_panel.add_child(column)
 	var title := Label.new()
-	title.text = Strings.t("perf_title")
+	Strings.bind(title, "perf_title")
 	column.add_child(title)
 	_stats = Label.new()
 	column.add_child(_stats)
 	for key in OPTIONS:
 		var check := CheckButton.new()
-		check.text = Strings.t(OPTION_LABELS[key])
+		Strings.bind(check, OPTION_LABELS[key])
 		check.focus_mode = Control.FOCUS_NONE
 		check.set_pressed_no_signal(option(key))
 		check.toggled.connect(func(on: bool) -> void: set_option(key, on))
 		column.add_child(check)
 		_checks[key] = check
 	var close := Button.new()
-	close.text = Strings.t("perf_close")
+	Strings.bind(close, "perf_close")
 	close.focus_mode = Control.FOCUS_NONE
 	close.pressed.connect(toggle)
 	column.add_child(close)

@@ -1,8 +1,7 @@
 extends "res://scripts/ui/card_screen.gd"
-## The defeat card: a sad jujuba, the painted share that counts up, `Tentar de novo` and `Fases`.
+## The defeat card: a sad jujuba, the painted share that counts up, a retry button, a replay button and a levels button.
+## A random level offers a new random level and Home in place of the levels button.
 ## open() takes the summary dictionary of Bus.level_lost.
-
-const LevelsData := preload("res://scripts/core/levels_data.gd")
 
 const BAR_HEIGHT := 30.0
 
@@ -14,6 +13,9 @@ var _fill_bar: Panel
 var _share := 0.0
 var _summary: Dictionary = {}
 var _wobble: Tween
+var _replay_button: Button
+var _levels_button: Button
+var _random_row: HBoxContainer
 
 
 func _init() -> void:
@@ -23,7 +25,9 @@ func _init() -> void:
 	stack.add_child(jelly_holder)
 	_jelly = Icon.new().setup(&"jelly_sad", 140, Palette.INK, Palette.BODY[0])
 	jelly_holder.add_child(_jelly)
-	stack.add_child(UiTheme.paragraph(Strings.t("defeat_title"), UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK))
+	var title := UiTheme.paragraph("", UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK)
+	Strings.bind(title, "defeat_title")
+	stack.add_child(title)
 	_subtitle = UiTheme.label("", UiTuning.SIZE_SMALL + 2, UiTuning.WEIGHT_BODY, Palette.INK_SOFT)
 	stack.add_child(_subtitle)
 
@@ -52,9 +56,22 @@ func _init() -> void:
 	var retry := _button(JuicyButton.Kind.PRIMARY, "defeat_retry", &"restart", UiTuning.BUTTON_HEIGHT_HERO)
 	retry.pressed.connect(func() -> void: Game.restart())
 	stack.add_child(retry)
-	var levels := _button(JuicyButton.Kind.SECONDARY, "defeat_levels", &"grid")
-	levels.pressed.connect(func() -> void: Game.open_levels())
-	stack.add_child(levels)
+	_replay_button = _button(JuicyButton.Kind.SECONDARY, "replay_button", &"replay")
+	_replay_button.pressed.connect(func() -> void: Game.play_replay())
+	stack.add_child(_replay_button)
+	_levels_button = _button(JuicyButton.Kind.SECONDARY, "defeat_levels", &"grid")
+	_levels_button.pressed.connect(func() -> void: Game.open_levels())
+	stack.add_child(_levels_button)
+	_random_row = UiTheme.hbox(16)
+	stack.add_child(_random_row)
+	var new_random := _button(JuicyButton.Kind.SECONDARY, "random_new", &"dice")
+	new_random.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_random.pressed.connect(func() -> void: Game.start_random())
+	_random_row.add_child(new_random)
+	var home := _button(JuicyButton.Kind.SECONDARY, "random_home", &"back")
+	home.custom_minimum_size.x = 200.0
+	home.pressed.connect(func() -> void: Game.open_home())
+	_random_row.add_child(home)
 
 
 func _fill_share(k: float) -> void:
@@ -78,9 +95,11 @@ func _place_fill() -> void:
 
 func _fill(data: Dictionary) -> void:
 	_summary = data
-	var index: int = data.get("level_index", 0)
-	var def: Dictionary = LevelsData.LEVELS[clampi(index, 0, LevelsData.LEVELS.size() - 1)]
-	_subtitle.text = Strings.t("level_subtitle", {"n": index + 1, "name": Strings.t(def.name_key)})
+	_subtitle.text = _subtitle_for(data)
+	var random: bool = data.get("mode", &"normal") == &"random"
+	_replay_button.visible = data.get("can_replay", false)
+	_levels_button.visible = not random
+	_random_row.visible = random
 	_fill_share(0.0)
 	if _wobble:
 		_wobble.kill()

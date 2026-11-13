@@ -1,8 +1,8 @@
 extends "res://scripts/ui/screen.gd"
-## The level HUD: pause, level name, restart, the move meter with its stars, "Restam N", the paint progress,
+## The level HUD: pause, level name, restart, the move meter with its stars, the moves left, the paint progress,
 ## the level hint and the tension vignette. It reads Bus signals only.
 
-const LevelsData := preload("res://scripts/core/levels_data.gd")
+const LevelModes := preload("res://scripts/core/level_modes.gd")
 const RangeBar := preload("res://scripts/ui/range_bar.gd")
 
 ## Emitted when the free area for the board changes, with the new rect in base units (see board_rect).
@@ -31,6 +31,10 @@ var _swipe_dot: Control
 var _swipe_arrows: Control
 
 var _meter_key := Vector3i(-1, -1, -1)
+## The level info of Bus.level_loaded.
+var _info: Dictionary = {}
+var _hint_key := ""
+var _snapshot: Dictionary = {}
 var _last_moves := 0
 var _progress_share := 0.0
 var _tense := false
@@ -156,6 +160,7 @@ func _ready() -> void:
 	Bus.swipe_started.connect(_on_swipe_started)
 	Bus.tension_changed.connect(_on_tension_changed)
 	Bus.music_beat.connect(_on_music_beat)
+	Bus.locale_changed.connect(_on_locale_changed)
 
 
 ## The free area between the top cluster and the hint area, in base units of the HUD layer.
@@ -184,29 +189,28 @@ func _play_in() -> void:
 	_screen_tween.chain().tween_callback(opened.emit)
 
 
-func _on_level_loaded(index: int) -> void:
-	var def: Dictionary = LevelsData.LEVELS[clampi(index, 0, LevelsData.LEVELS.size() - 1)]
-	_level_label.text = Strings.t("hud_level", {"n": index + 1})
-	_name_label.text = Strings.t(def.name_key)
+func _on_level_loaded(index: int, info: Dictionary) -> void:
+	_info = info if not info.is_empty() else LevelModes.info(index, false)
+	_hint_key = String(_info.hint_key)
+	_set_level_texts()
 	_meter_key = Vector3i(-1, -1, -1)
 	_last_moves = 0
 	_reset_stars()
 	_set_tense(false, false)
-	var hint_key: String = def.get("hint_key", "")
-	_show_hint(hint_key)
+	_show_hint(_hint_key)
 
 
 func _on_session_changed(snap: Dictionary) -> void:
 	if not snap.has("limit"):
 		return
+	_snapshot = snap
 	var key := Vector3i(snap.three_max, snap.two_max, snap.limit)
 	var fresh := key != _meter_key
 	if fresh:
 		_meter_key = key
 		_meter.setup(snap, false)
 	var moves: int = snap.moves_used
-	var left: int = snap.moves_left
-	_counter.text = Strings.t("hud_moves_left_one" if left == 1 else "hud_moves_left", {"n": left})
+	_set_session_texts()
 	_meter.set_moves(moves, not fresh)
 	if moves == 0:
 		_reset_stars()
@@ -219,9 +223,42 @@ func _on_session_changed(snap: Dictionary) -> void:
 	_last_moves = moves
 	var floor_count := maxi(int(snap.floor), 1)
 	var share := clampf(float(snap.painted) / floor_count, 0.0, 1.0)
-	@warning_ignore("integer_division")
-	_progress_label.text = Strings.t("hud_painted", {"p": int(snap.painted) * 100 / floor_count})
 	_set_progress(share, not fresh)
+
+
+# The text of the level: its number and mode, its name (the seed for a random level) and its hint.
+func _set_level_texts() -> void:
+	if _info.is_empty():
+		return
+	match _info.mode:
+		&"random":
+			_level_label.text = Strings.t("hud_random_solo" if _info.solo else "hud_random")
+			_name_label.text = Strings.t("random_seed", {"seed": _info.seed})
+		&"solo":
+			_level_label.text = Strings.t("hud_level_solo", {"n": int(_info.index) + 1})
+			_name_label.text = Strings.t(_info.name_key)
+		_:
+			_level_label.text = Strings.t("hud_level", {"n": int(_info.index) + 1})
+			_name_label.text = Strings.t(_info.name_key)
+	if _hint_key != "":
+		_hint_label.text = Strings.t(_hint_key)
+
+
+# The text of the last snapshot: the moves left and the painted share.
+func _set_session_texts() -> void:
+	if _snapshot.is_empty():
+		return
+	var left: int = _snapshot.moves_left
+	_counter.text = Strings.t("hud_moves_left_one" if left == 1 else "hud_moves_left", {"n": left})
+	var floor_count := maxi(int(_snapshot.floor), 1)
+	@warning_ignore("integer_division")
+	_progress_label.text = Strings.t("hud_painted", {"p": int(_snapshot.painted) * 100 / floor_count})
+
+
+# Only the text changes: no motion, no star reset, no meter setup.
+func _on_locale_changed(_locale: StringName) -> void:
+	_set_level_texts()
+	_set_session_texts()
 
 
 func _on_star_lost(stars_left: int) -> void:
@@ -323,8 +360,6 @@ func _show_hint(hint_key: String) -> void:
 		_hint_tween.kill()
 	_hint_pill.visible = hint_key != ""
 	_hint_pill.modulate.a = 1.0
-	if hint_key != "":
-		_hint_label.text = Strings.t(hint_key)
 	_swipe_hint_on = hint_key == "hint_swipe"
 	_swipe_hint.modulate.a = 1.0
 	_swipe_hint.visible = _swipe_hint_on

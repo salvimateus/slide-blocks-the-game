@@ -11,29 +11,29 @@ const SAMPLE_RATE := 44100
 
 ## base_hz: the pitch of the sample at pitch_scale 1. db: the default volume.
 const SFX := {
-	&"swipe": {"path": "res://audio/sfx/swipe.wav", "base_hz": 0.0, "db": -6.0},
-	&"paint": {"path": "res://audio/sfx/paint.wav", "base_hz": 523.25, "db": -3.0},
-	&"repaint": {"path": "res://audio/sfx/repaint.wav", "base_hz": 1100.0, "db": -10.0},
-	&"squish": {"path": "res://audio/sfx/squish.wav", "base_hz": 0.0, "db": -2.0},
-	&"bump": {"path": "res://audio/sfx/bump.wav", "base_hz": 0.0, "db": -5.0},
-	&"glide": {"path": "res://audio/sfx/glide.wav", "base_hz": 0.0, "db": -6.0},
-	&"thud": {"path": "res://audio/sfx/thud.wav", "base_hz": 0.0, "db": -4.0},
+	&"swipe": {"path": "res://audio/sfx/swipe.wav", "base_hz": 0.0, "db": -9.0},
+	&"paint": {"path": "res://audio/sfx/paint.wav", "base_hz": 523.25, "db": -7.0},
+	&"repaint": {"path": "res://audio/sfx/repaint.wav", "base_hz": 349.23, "db": -14.0},
+	&"squish": {"path": "res://audio/sfx/squish.wav", "base_hz": 0.0, "db": -6.0},
+	&"bump": {"path": "res://audio/sfx/bump.wav", "base_hz": 0.0, "db": -7.0},
+	&"glide": {"path": "res://audio/sfx/glide.wav", "base_hz": 0.0, "db": -7.0},
+	&"thud": {"path": "res://audio/sfx/thud.wav", "base_hz": 0.0, "db": -6.0},
 	&"star_lost": {"path": "res://audio/sfx/star_lost.wav", "base_hz": 0.0, "db": -4.0},
-	&"tension": {"path": "res://audio/sfx/tension.wav", "base_hz": 0.0, "db": -4.0},
-	&"ring": {"path": "res://audio/sfx/ring.wav", "base_hz": 523.25, "db": -4.0},
-	&"glitter": {"path": "res://audio/sfx/glitter.wav", "base_hz": 1318.51, "db": -10.0},
+	&"tension": {"path": "res://audio/sfx/tension.wav", "base_hz": 0.0, "db": -3.0},
+	&"ring": {"path": "res://audio/sfx/ring.wav", "base_hz": 523.25, "db": -6.0},
+	&"glitter": {"path": "res://audio/sfx/glitter.wav", "base_hz": 1174.66, "db": -9.0},
 	&"win": {"path": "res://audio/sfx/win.wav", "base_hz": 0.0, "db": -1.0},
-	&"star": {"path": "res://audio/sfx/star.wav", "base_hz": 783.99, "db": -2.0},
+	&"star": {"path": "res://audio/sfx/star.wav", "base_hz": 698.46, "db": -3.0},
 	&"defeat": {"path": "res://audio/sfx/defeat.wav", "base_hz": 0.0, "db": -2.0},
 	&"tap": {"path": "res://audio/sfx/tap.wav", "base_hz": 0.0, "db": -6.0},
-	&"locked": {"path": "res://audio/sfx/locked.wav", "base_hz": 0.0, "db": -4.0},
-	&"unlock": {"path": "res://audio/sfx/unlock.wav", "base_hz": 0.0, "db": -2.0},
+	&"locked": {"path": "res://audio/sfx/locked.wav", "base_hz": 0.0, "db": -6.0},
+	&"unlock": {"path": "res://audio/sfx/unlock.wav", "base_hz": 0.0, "db": -3.0},
 }
 
 ## frames: the exact loop length that the bake writes (bars * 4 beats at bpm, 44,100 Hz).
 const MUSIC := {
-	&"calm": {"path": "res://audio/music/calm.wav", "bpm": AudioTuning.CALM_BPM, "bars": AudioTuning.CALM_BARS, "frames": 2016000},
-	&"tense": {"path": "res://audio/music/tense.wav", "bpm": AudioTuning.TENSE_BPM, "bars": AudioTuning.TENSE_BARS, "frames": 814154},
+	&"calm": {"path": "res://audio/music/calm.wav", "bpm": AudioTuning.CALM_BPM, "bars": AudioTuning.CALM_BARS, "frames": 4233600},
+	&"tense": {"path": "res://audio/music/tense.wav", "bpm": AudioTuning.TENSE_BPM, "bars": AudioTuning.TENSE_BARS, "frames": 1512000},
 }
 
 static var _streams: Dictionary = {}

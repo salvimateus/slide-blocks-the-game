@@ -1,10 +1,12 @@
 extends Control
 ## A small picture of a board, drawn one time from the level data: tray, tiles, obstacles, rails and blocks.
+## It can hold a second level (the alternate look, for example the one-jelly version) and show it with `alt`.
 
 const Palette := preload("res://scripts/core/palette.gd")
 const LevelParser := preload("res://scripts/core/level_parser.gd")
 const Level := preload("res://scripts/core/level.gd")
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
+const UiTuning := preload("res://scripts/ui/ui_tuning.gd")
 
 const RIM := 0.32                      # rim width, as a share of the cell
 const GAP := 0.1                       # gap between tiles, as a share of the cell
@@ -18,12 +20,22 @@ var muted := false:
 			muted = value
 			queue_redraw()
 
+## Shows the alternate level when there is one. A muted thumbnail always shows the normal level.
+var alt := false:
+	set(value):
+		if alt != value:
+			alt = value
+			queue_redraw()
+
 ## False for the copy that the baker draws in vector form.
 var bakeable := true
 
 var _level: RefCounted
 var _hues := PackedInt32Array()
 var _def := {}
+var _alt_level: RefCounted
+var _alt_hues := PackedInt32Array()
+var _alt_def := {}
 var _index := 0
 
 
@@ -32,15 +44,31 @@ func _init() -> void:
 
 
 ## `def` is an entry of LevelsData. The block colors follow the level index, so a thumbnail never changes.
-func setup(def: Dictionary, index: int) -> Control:
+## `alt_def`, when not empty, is the level of the alternate look, with block colors from the same rule.
+func setup(def: Dictionary, index: int, alt_def: Dictionary = {}) -> Control:
 	_def = def
 	_index = index
 	_level = LevelParser.parse(def, index)
-	_hues.clear()
-	for b in _level.starts.size():
-		_hues.append((index * 3 + b * 2) % Palette.FAMILY_SIZE)
+	_hues = _hues_for(_level, index)
+	_alt_def = alt_def
+	_alt_level = null
+	_alt_hues = PackedInt32Array()
+	if not alt_def.is_empty():
+		_alt_level = LevelParser.parse(alt_def, index)
+		_alt_hues = _hues_for(_alt_level, index)
 	queue_redraw()
 	return self
+
+
+func has_alt() -> bool:
+	return _alt_level != null
+
+
+static func _hues_for(lv: Level, index: int) -> PackedInt32Array:
+	var hues := PackedInt32Array()
+	for b in lv.starts.size():
+		hues.append((index * 3 + b * 2) % Palette.FAMILY_SIZE)
+	return hues
 
 
 func _notification(what: int) -> void:
@@ -48,37 +76,47 @@ func _notification(what: int) -> void:
 		queue_redraw()
 
 
-## Asks the baker for both looks, muted and not.
+## Asks the baker for each look that can show: normal muted, normal, and the alternate one (never muted).
 func prewarm() -> void:
-	_fetch(false, null)
-	_fetch(true, null)
+	_fetch(false, false, null)
+	_fetch(false, true, null)
+	if has_alt():
+		_fetch(true, false, null)
 
 
-func _fetch(look_muted: bool, waiter: CanvasItem) -> Texture2D:
+func _shows_alt() -> bool:
+	return alt and has_alt() and not muted
+
+
+func _fetch(look_alt: bool, look_muted: bool, waiter: CanvasItem) -> Texture2D:
 	if _level == null or size.x <= 0.0 or size.y <= 0.0:
 		return null
-	var key := "thumb|%d|%s" % [_index, look_muted]
-	return UiBake.fetch(key, Rect2(Vector2.ZERO, size).grow(2.0), _make_copy.bind(look_muted), waiter)
+	var key := "thumb|%d|%s|%s" % [_index, "alt" if look_alt else "base", look_muted]
+	return UiBake.fetch(key, Rect2(Vector2.ZERO, size).grow(2.0), _make_copy.bind(look_alt, look_muted), waiter,
+		UiTuning.THUMB_MAX_PIXEL_SCALE)
 
 
-func _make_copy(look_muted: bool) -> CanvasItem:
+func _make_copy(look_alt: bool, look_muted: bool) -> CanvasItem:
 	var copy: Control = get_script().new()
 	copy.bakeable = false
-	copy.setup(_def, _index)
+	copy.setup(_def, _index, _alt_def if look_alt else {})
+	copy.alt = look_alt
 	copy.muted = look_muted
 	copy.size = size
 	return copy
 
 
 func _draw() -> void:
-	if _level == null or _level.cells == 0:
+	var look_alt := _shows_alt()
+	var lv: Level = _alt_level if look_alt else _level
+	if lv == null or lv.cells == 0:
 		return
 	if bakeable:
-		var tex := _fetch(muted, self)
+		var tex := _fetch(look_alt, muted, self)
 		if tex != null:
 			draw_texture_rect(tex, Rect2(Vector2.ZERO, size).grow(2.0), false)
 			return
-	var lv: Level = _level
+	var hues := _alt_hues if look_alt else _hues
 	var bounds := _used_bounds(lv)
 	var span := Vector2(bounds.size) + Vector2(RIM * 2.0, RIM * 2.0)
 	var cell := minf(size.x / span.x, size.y / span.y)
@@ -102,13 +140,13 @@ func _draw() -> void:
 			_rbox(Rect2(r.position, r.size - Vector2(0, cell * 0.1)), cell * TILE_RADIUS, Palette.PERIWINKLE)
 		elif lv.floor_cells[i] == 1:
 			var painted := lv.starts.find(i)
-			var face := Palette.MINT if painted < 0 else Palette.PAINT[_hues[painted]]
-			_rbox(r, cell * TILE_RADIUS, Palette.FLOOR_SHADOW if painted < 0 else Palette.OUTLINE[_hues[painted]])
+			var face := Palette.MINT if painted < 0 else Palette.PAINT[hues[painted]]
+			_rbox(r, cell * TILE_RADIUS, Palette.FLOOR_SHADOW if painted < 0 else Palette.OUTLINE[hues[painted]])
 			_rbox(Rect2(r.position, r.size - Vector2(0, cell * 0.07)), cell * TILE_RADIUS, face)
 			if lv.deflector[i] != Level.NONE:
 				_draw_rail(lv.deflector[i], r, cell)
 	for b in lv.starts.size():
-		_draw_block(_cell_rect(lv, lv.starts[b], origin, cell), cell, _hues[b])
+		_draw_block(_cell_rect(lv, lv.starts[b], origin, cell), cell, hues[b])
 
 
 func _used_bounds(lv: Level) -> Rect2i:

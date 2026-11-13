@@ -3,9 +3,21 @@ extends Node
 ## Arguments come after `--` on the Godot command line, in the form --key=value or --flag.
 ## The harness does nothing when no argument is present, and stays silent in a `--script` tool run.
 ## It reads the game only through the Game API and the Bus signals.
+## Language and screen: --lang=<pt|en> forces the UI language for this run, with no write to the save.
+## --screen=levels --page=<n> opens page n (from 1) of the level select screen.
+## --set-lang=<pt|en> changes the language at run time through Save, when the run is at its last state
+## (the --screen screen, the pause dialog of --screen=pause, or the end of the scripted play), then marks `lang`.
+## It writes the choice into the save file, so it needs --save.
+## Modes: --solo turns the one-jelly setting on through Save (needs --save); --solve and --play-all then play the
+## one-jelly version of each level that has one. --random[=<seed>] plays a random level (no value: a new seed);
+## it does not combine with --level, --play-all or --screen. --random-hold=<ms> holds the ready level that long, so the
+## loading screen shows (mark `loading`). --random-map prints `RANDOM_MAP <row>` for each row of the map.
+## Each random level prints `RANDOM <report json>` and marks `random_ready`.
+## Replay: --replay plays the replay of the game when its card is at rest (needs --level or --random, not --play-all),
+## and the run goes on after it. --replay-stop-at=<n> stops it at move n. Marks `replay_start`, `replay_move_<n>` (from 0)
+## and `replay_end`, after the line `HARNESS REPLAY completed=<bool> matched=<bool>`.
 
 const LevelsData := preload("res://scripts/core/levels_data.gd")
-const ParData := preload("res://scripts/core/par_data.gd")
 
 const DEFAULT_SHOT_FRAMES := 60
 const DEFAULT_TIMEOUT := 60.0
@@ -23,6 +35,9 @@ const DRAG_STEPS := 4
 const FRAME_LOG_MS := 25.0
 ## Frames to wait for a card to open after the level ends, before the run goes on without it.
 const CARD_WAIT_FRAMES := 240
+## Frames from the last state to the --set-lang change, so an open motion is at rest, and from the change to the `lang` mark.
+const SET_LANG_WAIT_FRAMES := 45
+const SET_LANG_SETTLE_FRAMES := 10
 
 var _args: Dictionary = {}
 var _tool_run := false
@@ -41,6 +56,7 @@ var _perf_printed := false
 var _blocks_input := false
 var _move_gap := DEFAULT_MOVE_GAP_MS / 1000.0
 var _failures := PackedStringArray()
+var _failures_printed := false
 
 # Per swipe.
 var _move_n := 0
@@ -155,7 +171,8 @@ func mark(event: String) -> void:
 func finish(code: int) -> void:
 	if _quit_code >= 0:
 		return
-	_quit_code = code
+	_print_failures()
+	_quit_code = 1 if code == 0 and _failures.size() > 0 else code
 	_print_perf_summary()
 	if _pending_shots == 0:
 		Game.quit(code)
@@ -197,10 +214,16 @@ func _save_viewport(path: String) -> Error:
 func _apply_setup() -> void:
 	if has_arg("save"):
 		Save.use_path(_os_path(arg("save")))
+	if has_arg("lang"):
+		Save.force_language(StringName(arg("lang")))
 	if has_arg("unlock-all"):
 		Save.unlock_all()
 	if has_arg("reduced-motion"):
 		Save.set_setting(&"reduced_motion", true)
+	if has_arg("solo") and has_arg("save"):
+		Save.set_setting(&"solo", true)
+	if has_arg("random-hold"):
+		Game.set_random_hold(arg("random-hold").to_int())
 	if has_arg("time-scale"):
 		Feel.set_base_time_scale(arg("time-scale").to_float())
 
@@ -266,6 +289,10 @@ func _connect_bus() -> void:
 	Bus.ceremony_cue.connect(_on_ceremony_cue)
 	Bus.level_won.connect(_on_level_end)
 	Bus.level_lost.connect(_on_level_end)
+	Bus.level_generated.connect(_on_level_generated)
+	Bus.replay_started.connect(_on_replay_started)
+	Bus.replay_step.connect(_on_replay_step)
+	Bus.replay_finished.connect(_on_replay_finished)
 
 
 func _on_screen_changed(screen: StringName) -> void:
@@ -279,6 +306,8 @@ func _on_screen_changed(screen: StringName) -> void:
 		&"defeat":
 			_card_shown = true
 			mark("defeat_card")
+		&"loading":
+			mark("loading")
 
 
 func _on_level_ready(_index: int) -> void:
@@ -345,6 +374,33 @@ func _on_level_end(summary: Dictionary) -> void:
 		print("RESULT ", JSON.stringify(result))
 
 
+func _on_level_generated(report: Dictionary) -> void:
+	var line := report.duplicate()
+	line.erase("map")
+	print("RANDOM ", JSON.stringify(line))
+	if has_arg("random-map"):
+		for row: String in report.get("map", []):
+			print("RANDOM_MAP ", row)
+	mark("random_ready")
+
+
+func _on_replay_started(_total: int) -> void:
+	mark("replay_start")
+
+
+func _on_replay_step(n: int, _total: int) -> void:
+	mark("replay_move_%d" % n)
+	if has_arg("replay-stop-at") and arg("replay-stop-at").to_int() == n:
+		Game.stop_replay()
+
+
+func _on_replay_finished(completed: bool, matched: bool) -> void:
+	print("HARNESS REPLAY completed=%s matched=%s" % [completed, matched])
+	if completed and not matched:
+		_failures.append("replay: the end state differs from the game")
+	mark("replay_end")
+
+
 func _mark_mid() -> void:
 	_mid_marked = true
 	mark("move_%d_mid" % _move_n)
@@ -379,42 +435,68 @@ func _run_script() -> void:
 	await get_tree().process_frame
 	if _blocks_input:
 		get_tree().root.move_child(self, -1)
-	if plan.levels.is_empty():
+	if plan.levels.is_empty() and not plan.random:
 		_begin_perf(true)
 		if plan.screen == "levels":
-			Game.open_levels()
+			Game.open_levels(arg("page", "0").to_int() - 1)
 		elif Game.screen != &"home":
 			Game.open_home()
+		await _set_lang_live()
 		return
+	if plan.random:
+		await _play_level(Game.start_random.bind(plan.seed), "random level", plan)
+		if _stopped():
+			return
 	for i in plan.levels.size():
 		var index: int = plan.levels[i]
 		if i > 0:
 			_restart_watchdog()
-		await _play_level(index, _moves_for(plan, index), plan.keys)
+		await _play_level(Game.start_level.bind(index), "level %d" % (index + 1), plan)
 		if _stopped():
 			return
 	if plan.screen == "pause":
 		Game.set_paused(true)
+		await _set_lang_live()
 		return
-	if _failures.size() > 0:
-		for line in _failures:
-			print("HARNESS FAIL ", line)
+	await _set_lang_live()
+	if _stopped():
+		return
+	_print_failures()
 	if _blocks_input and not has_arg("quit-at") and not has_arg("shot"):
 		finish(1 if _failures.size() > 0 else 0)
 
 
-## {"levels": [index, ...], "moves": String, "solve": bool, "keys": bool, "screen": String}, or {} with no scripted play.
+## {"levels": [index, ...], "random": bool, "seed": int, "moves": String, "solve": bool, "keys": bool, "screen": String},
+## or {} with no scripted play.
 func _plan() -> Dictionary:
+	if has_arg("set-lang") and not has_arg("save"):
+		return _plan_error("--set-lang writes the language into the save: add --save=<file>")
+	if has_arg("solo") and not has_arg("save"):
+		return _plan_error("--solo writes the one-jelly setting into the save: add --save=<file>")
+	var random := has_arg("random")
+	if random and (has_arg("level") or has_arg("play-all") or has_arg("screen")):
+		return _plan_error("--random does not combine with --level, --play-all or --screen")
+	if has_arg("replay") and (has_arg("play-all") or not (has_arg("level") or random)):
+		return _plan_error("--replay needs --level or --random, and does not combine with --play-all")
+	if has_arg("replay-stop-at") and not has_arg("replay"):
+		return _plan_error("--replay-stop-at needs --replay")
 	var screen := arg("screen")
+	if has_arg("page") and screen != "levels":
+		push_warning("Harness: --page has no effect without --screen=levels")
 	if screen != "" and not (screen in ["home", "levels", "pause"]):
 		return _plan_error("--screen must be home, levels or pause (got '%s')" % screen)
-	var plays := has_arg("level") or _scripts_input() or screen == "pause"
+	var plays := has_arg("level") or random or _scripts_input() or screen == "pause"
 	if screen in ["home", "levels"] and plays:
 		return _plan_error("--screen=%s does not combine with --level, --moves, --keys, --solve or --play-all" % screen)
 	if has_arg("moves") and has_arg("keys"):
 		return _plan_error("use --moves or --keys, not both")
-	var plan := {"levels": [], "moves": "", "solve": has_arg("solve") or has_arg("play-all"), "keys": has_arg("keys"), "screen": screen}
+	var plan := {
+		"levels": [], "random": random, "seed": arg("random").to_int() if arg("random") != "" else -1,
+		"moves": "", "solve": has_arg("solve") or has_arg("play-all"), "keys": has_arg("keys"), "screen": screen,
+	}
 	if not plays:
+		if screen == "" and has_arg("set-lang"):
+			push_warning("Harness: --set-lang has no effect without --screen or --level")
 		return plan if screen != "" else {}
 	if plan.solve and has_arg("moves"):
 		return _plan_error("--solve and --play-all play the baked solution: remove --moves")
@@ -423,6 +505,8 @@ func _plan() -> Dictionary:
 	for c in plan.moves:
 		if not DIR_CHARS.contains(c):
 			return _plan_error("the swipe list may hold only U, D, L and R (got '%s')" % plan.moves)
+	if random:
+		return plan
 	if has_arg("play-all"):
 		if has_arg("level"):
 			return _plan_error("--play-all plays each level: remove --level")
@@ -436,20 +520,39 @@ func _plan() -> Dictionary:
 	return plan
 
 
+## The runtime language change of --set-lang, at the last state of the run.
+func _set_lang_live() -> void:
+	if not has_arg("set-lang"):
+		return
+	for i in SET_LANG_WAIT_FRAMES:
+		await get_tree().process_frame
+		if _stopped():
+			return
+	Save.set_language(StringName(arg("set-lang")))
+	for i in SET_LANG_SETTLE_FRAMES:
+		await get_tree().process_frame
+		if _stopped():
+			return
+	mark("lang")
+
+
 func _plan_error(message: String) -> Dictionary:
 	push_error("Harness: " + message)
 	finish(1)
 	return {}
 
 
-func _moves_for(plan: Dictionary, index: int) -> String:
-	if not plan.solve:
-		return plan.moves
-	var id: String = LevelsData.LEVELS[index].id
-	return ParData.PAR[id].solution
+func _print_failures() -> void:
+	if _failures_printed or _failures.is_empty():
+		return
+	_failures_printed = true
+	for line in _failures:
+		print("HARNESS FAIL ", line)
 
 
-func _play_level(index: int, moves: String, keys: bool) -> void:
+## Starts a level with `start`, plays the moves of the plan (the solution of the level with --solve), waits for its card,
+## then plays its replay with --replay. `label` names the level in a failure.
+func _play_level(start: Callable, label: String, plan: Dictionary) -> void:
 	_level_ended = false
 	_level_status = ""
 	_card_shown = false
@@ -457,13 +560,15 @@ func _play_level(index: int, moves: String, keys: bool) -> void:
 	var ready_seen := [false]
 	var on_ready := func(_i: int) -> void: ready_seen[0] = true
 	Bus.level_ready.connect(on_ready)
-	Game.start_level(index)
+	start.call()
 	while not ready_seen[0]:
 		await get_tree().process_frame
 		if _stopped():
 			Bus.level_ready.disconnect(on_ready)
 			return
 	Bus.level_ready.disconnect(on_ready)
+	var keys: bool = plan.keys
+	var moves: String = Game.current_solution() if plan.solve else plan.moves
 	for c in moves:
 		if _level_ended or _game_over():
 			break
@@ -476,7 +581,7 @@ func _play_level(index: int, moves: String, keys: bool) -> void:
 	var solve := has_arg("solve") or has_arg("play-all")
 	if not _game_over() and not _level_ended:
 		if solve:
-			_failures.append("level %d: the solution did not complete the level" % (index + 1))
+			_failures.append("%s: the solution did not complete the level" % label)
 		await get_tree().create_timer(_move_gap, true, false, false).timeout
 		return
 	while not _level_ended:
@@ -490,8 +595,28 @@ func _play_level(index: int, moves: String, keys: bool) -> void:
 		if _stopped():
 			return
 	if solve and _level_status != "won":
-		_failures.append("level %d: status %s after the solution" % [index + 1, _level_status])
+		_failures.append("%s: status %s after the solution" % [label, _level_status])
 	await get_tree().create_timer(_move_gap, true, false, false).timeout
+	if has_arg("replay") and not _stopped():
+		await _play_replay()
+
+
+## Plays the replay of the open card and waits for its end.
+func _play_replay() -> void:
+	if not Game.can_replay():
+		_failures.append("replay: the card offers no replay")
+		return
+	var done := [false]
+	var on_end := func(_completed: bool, _matched: bool) -> void: done[0] = true
+	Bus.replay_finished.connect(on_end)
+	Game.play_replay()
+	while not done[0]:
+		await get_tree().process_frame
+		if _stopped():
+			break
+	Bus.replay_finished.disconnect(on_end)
+	if not _stopped():
+		await get_tree().create_timer(_move_gap, true, false, false).timeout
 
 
 func _swipe(dir: int, keys: bool) -> void:

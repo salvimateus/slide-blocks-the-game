@@ -72,7 +72,10 @@ func _kill_screen_tween() -> void:
 
 func _button(kind: JuicyButton.Kind, text_key: String, icon_kind: StringName = &"", height: float = UiTuning.BUTTON_HEIGHT) -> Button:
 	var text_value := Strings.t(text_key) if text_key != "" else ""
-	return JuicyButton.new().setup(kind, text_value, icon_kind, height)
+	var button: Button = JuicyButton.new().setup(kind, text_value, icon_kind, height)
+	if text_key != "":
+		Strings.bind(button.label, text_key)
+	return button
 
 
 func _round_button(icon_kind: StringName) -> Button:

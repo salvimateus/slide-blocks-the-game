@@ -2,6 +2,8 @@ extends "res://scripts/ui/screen.gd"
 ## Base of the result and defeat cards: a scrim, a card that springs in, and a tap that skips the intro.
 ## Subclasses add their rows to `stack`, and fill `_intro(tween)` and `_finish()`.
 
+const LevelsData := preload("res://scripts/core/levels_data.gd")
+
 ## False when the caller already dims the screen behind the card.
 var use_scrim := true
 
@@ -59,6 +61,25 @@ func skip() -> void:
 	_end_intro()
 
 
+## Shows the card again at its final state with a plain fade: no intro, no count-up, no star signal.
+func reopen() -> void:
+	is_open = true
+	visible = true
+	_kill_screen_tween()
+	_animating = false
+	position = Vector2.ZERO
+	_scrim.visible = use_scrim
+	_scrim.modulate.a = 1.0
+	_card.scale = Vector2.ONE
+	_card.rotation = 0.0
+	_card.modulate.a = 1.0
+	_finish()
+	modulate.a = 0.0
+	_screen_tween = create_tween()
+	_screen_tween.tween_property(self, "modulate:a", 1.0, UiTuning.SCREEN_FADE_TIME)
+	_screen_tween.tween_callback(opened.emit)
+
+
 func _play_in() -> void:
 	_animating = true
 	modulate.a = 1.0
@@ -94,6 +115,18 @@ func _end_intro() -> void:
 		return
 	_animating = false
 	opened.emit()
+
+
+## The subtitle of a card summary: the level and its name, the one-jelly level, or the seed of a random level.
+func _subtitle_for(data: Dictionary) -> String:
+	var index: int = data.get("level_index", 0)
+	match data.get("mode", &"normal"):
+		&"random":
+			return Strings.t("random_subtitle", {"seed": data.get("seed", 0)})
+		&"solo":
+			return Strings.t("level_subtitle_solo", {"n": index + 1})
+	var def: Dictionary = LevelsData.LEVELS[clampi(index, 0, LevelsData.LEVELS.size() - 1)]
+	return Strings.t("level_subtitle", {"n": index + 1, "name": Strings.t(def.name_key)})
 
 
 ## A pop from zero with an overshoot, for a star or a badge.

@@ -136,3 +136,7 @@ const DEFEAT_HOLD_TIME := 0.6
 const DEMO_MOVE_GAP := 0.55
 const DEMO_WIN_DELAY := 0.25
 const DEMO_HOLD_TIME := 1.1
+
+# Replay.
+const REPLAY_MOVE_GAP := 0.4  # real seconds between two moves of a replay
+const REPLAY_END_HOLD := 0.8  # real seconds on the end state before the card returns

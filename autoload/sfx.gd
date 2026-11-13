@@ -18,6 +18,10 @@ var _rng := RandomNumberGenerator.new()
 var _note_step := -1
 var _tick_step := -1
 var _glitter_times: Array[int] = []
+var _stop_window_start := -1000000
+var _stop_count := 0
+## Added to each board sound: AudioTuning.REPLAY_BOARD_DB during a replay, else 0.
+var _board_db := 0.0
 
 
 func _ready() -> void:
@@ -54,10 +58,10 @@ func play(sound: StringName, pitch: float = 1.0, volume_db: float = 0.0) -> void
 
 
 ## Plays step `step` (from 0) of the note ladder of a sound: paint, ring or star.
-func note(sound: StringName, step: int) -> void:
+func note(sound: StringName, step: int, volume_db: float = 0.0) -> void:
 	var ladder: Array = LADDERS.get(sound, [0])
 	var semitones: int = ladder[clampi(step, 0, ladder.size() - 1)]
-	play(sound, pow(2.0, semitones / 12.0))
+	play(sound, pow(2.0, semitones / 12.0), volume_db)
 
 
 ## One silent play of each effect, for the boot warm-up.
@@ -95,9 +99,11 @@ func _connect_bus() -> void:
 	Bus.ui_tap.connect(play.bind(&"tap"))
 	Bus.ui_locked.connect(play.bind(&"locked"))
 	Bus.level_unlocked.connect(_on_level_unlocked)
-	Bus.level_loaded.connect(_on_level_reset)
+	Bus.level_loaded.connect(_on_level_reset.unbind(1))
 	Bus.level_restarted.connect(_on_level_reset)
 	Bus.setting_changed.connect(_on_setting_changed)
+	Bus.replay_started.connect(func(_total: int) -> void: _board_db = AudioTuning.REPLAY_BOARD_DB)
+	Bus.replay_finished.connect(func(_completed: bool, _matched: bool) -> void: _board_db = 0.0)
 
 
 func _set_muted(on: bool) -> void:
@@ -108,11 +114,11 @@ func _on_swipe_started(outcome: Dictionary) -> void:
 	_note_step = -1
 	_tick_step = -1
 	if outcome.get("moved", true):
-		play(&"swipe")
+		play(&"swipe", 1.0, _board_db)
 
 
 func _on_swipe_ignored(_dir: int) -> void:
-	play(&"thud")
+	play(&"thud", 1.0, _board_db)
 
 
 ## One note for each tick: the first fresh paint of a step plays the ladder note,
@@ -121,23 +127,32 @@ func _on_tile_painted(_cell: int, _hue: int, fresh: bool, step: int) -> void:
 	if fresh:
 		if step != _note_step:
 			_note_step = step
-			note(&"paint", step)
+			var top := AudioTuning.PAINT_SEMITONES.size() - 1
+			note(&"paint", step, AudioTuning.PAINT_STEP_DB * clampi(step, 0, top) + _board_db)
 	elif step != _tick_step and step != _note_step:
 		_tick_step = step
-		play(&"repaint")
+		play(&"repaint", 1.0, _board_db)
 
 
 func _on_block_turned(_block: int, _cell: int) -> void:
-	play(&"glide", 1.0 + _rng.randf_range(-0.03, 0.03))
+	play(&"glide", 1.0 + _rng.randf_range(-0.03, 0.03), _board_db)
 
 
+## Stops that start in one short window share it: the second one is softer and the rest are silent.
 func _on_block_stopped(_block: int, _cell: int, _dir: int, cause: StringName, power: float, _last: bool) -> void:
 	if power <= 0.0:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _stop_window_start >= AudioTuning.STOP_WINDOW_MS:
+		_stop_window_start = now
+		_stop_count = 0
+	if _stop_count >= AudioTuning.STOP_VOICES:
 		return
 	var sound := &"bump" if cause == &"block" else &"squish"
 	var gain := lerpf(AudioTuning.STOP_MIN_GAIN, 1.0, clampf(power, 0.0, 1.0))
 	var spread := AudioTuning.STOP_PITCH_SPREAD
-	play(sound, 1.0 + _rng.randf_range(-spread, spread), linear_to_db(gain))
+	play(sound, 1.0 + _rng.randf_range(-spread, spread), linear_to_db(gain) + AudioTuning.STOP_EXTRA_DB * _stop_count + _board_db)
+	_stop_count += 1
 
 
 func _on_star_lost(_stars_left: int) -> void:
@@ -175,6 +190,8 @@ func _on_level_unlocked(_index: int) -> void:
 func _on_level_reset(_index: int) -> void:
 	_note_step = -1
 	_tick_step = -1
+	_stop_window_start = -1000000
+	_stop_count = 0
 
 
 func _on_setting_changed(key: StringName, value: bool) -> void:
@@ -182,7 +199,7 @@ func _on_setting_changed(key: StringName, value: bool) -> void:
 		_set_muted(not value)
 
 
-## Six pings in each 100 ms at most, each on a random pentatonic pitch.
+## GLITTER_MAX pings in each GLITTER_WINDOW_MS at most, each on a random pentatonic pitch.
 func _glitter() -> void:
 	var now := Time.get_ticks_msec()
 	while not _glitter_times.is_empty() and now - _glitter_times[0] >= AudioTuning.GLITTER_WINDOW_MS:

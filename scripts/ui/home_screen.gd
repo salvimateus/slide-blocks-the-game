@@ -1,11 +1,12 @@
 extends "res://scripts/ui/screen.gd"
-## Home: the bouncing title, `Jogar` and `Fases`. The background stays clear: Game shows the live demo board behind it.
+## Home: the bouncing title, the play button, and the levels and random level buttons side by side. The background stays clear: Game shows the live demo board behind it.
 
 const UiBake := preload("res://scripts/ui/ui_bake.gd")
 
 var _letters: Array[Label] = []
 var _play_button: Button
 var _levels_button: Button
+var _random_button: Button
 var _bob_tweens: Array[Tween] = []
 
 
@@ -53,11 +54,17 @@ func _init() -> void:
 	_play_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_play_button.pressed.connect(func() -> void: Game.start_level(Save.highest_unlocked()))
 	buttons.add_child(_play_button)
+	var row := UiTheme.hbox(22)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_child(row)
 	_levels_button = _button(JuicyButton.Kind.SECONDARY, "home_levels", &"grid")
-	_levels_button.custom_minimum_size.x = 440.0
-	_levels_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_levels_button.custom_minimum_size.x = 220.0
 	_levels_button.pressed.connect(func() -> void: Game.open_levels())
-	buttons.add_child(_levels_button)
+	row.add_child(_levels_button)
+	_random_button = _button(JuicyButton.Kind.SECONDARY, "home_random", &"dice")
+	_random_button.custom_minimum_size.x = 398.0
+	_random_button.pressed.connect(func() -> void: Game.start_random())
+	row.add_child(_random_button)
 
 
 func _play_in() -> void:
@@ -79,7 +86,7 @@ func _play_in() -> void:
 		_screen_tween.tween_property(letter, "modulate:a", 1.0, UiTuning.SCREEN_FADE_TIME).set_delay(delay)
 		last = delay + UiTuning.CARD_SPRING_TIME
 	var button_delay := last * 0.5
-	for button: Control in [_play_button, _levels_button]:
+	for button: Control in [_play_button, _levels_button, _random_button]:
 		button.scale = Vector2(0.6, 0.6)
 		_screen_tween.tween_property(button, "scale", Vector2.ONE, UiTuning.CARD_SPRING_TIME) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(button_delay)

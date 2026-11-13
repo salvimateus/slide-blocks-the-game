@@ -13,6 +13,8 @@ var painted_count: int
 var moves_used: int
 var status: StringName = &"ready"
 var tense := false
+## One SlideRules.DIR_CHARS letter for each counted swipe, in play order.
+var history := ""
 
 
 func _init(p_level: Level, min_moves: int, p_hues: PackedInt32Array) -> void:
@@ -72,6 +74,7 @@ func swipe(dir: int) -> Dictionary:
 		ticks = maxi(ticks, e.tick)
 	positions = out
 	moves_used += 1
+	history += SlideRules.DIR_CHARS[dir]
 	if is_complete():
 		status = &"won"
 	elif moves_used >= thresholds.limit:

@@ -131,10 +131,10 @@ static func decay(buf: PackedFloat32Array, tau: float, start: float = 0.0) -> Pa
 
 
 ## Amplitude modulation: depth 0 is no change, depth 1 goes to silence.
-static func tremolo(buf: PackedFloat32Array, rate_hz: float, depth: float) -> PackedFloat32Array:
+static func tremolo(buf: PackedFloat32Array, rate_hz: float, depth: float, phase: float = 0.0) -> PackedFloat32Array:
 	var w := TAU * rate_hz / SR_F
 	for i: int in buf.size():
-		buf[i] *= 1.0 - depth * (0.5 - 0.5 * cos(w * float(i)))
+		buf[i] *= 1.0 - depth * (0.5 - 0.5 * cos(w * float(i) + phase))
 	return buf
 
 
@@ -159,6 +159,24 @@ static func pump(buf: PackedFloat32Array, beat_samples: float, depth: float, rec
 static func gain(buf: PackedFloat32Array, g: float) -> PackedFloat32Array:
 	for i: int in buf.size():
 		buf[i] *= g
+	return buf
+
+
+## tanh drive, scaled so an input of 1.0 stays 1.0.
+static func saturate(buf: PackedFloat32Array, drive: float) -> PackedFloat32Array:
+	var inv := 1.0 / tanh(drive)
+	for i: int in buf.size():
+		buf[i] = tanh(buf[i] * drive) * inv
+	return buf
+
+
+## Samples above `knee` bend smoothly toward `ceiling` and never pass it.
+static func soft_ceiling(buf: PackedFloat32Array, knee: float, ceiling: float) -> PackedFloat32Array:
+	var span := ceiling - knee
+	for i: int in buf.size():
+		var a := absf(buf[i])
+		if a > knee:
+			buf[i] = signf(buf[i]) * (knee + span * tanh((a - knee) / span))
 	return buf
 
 

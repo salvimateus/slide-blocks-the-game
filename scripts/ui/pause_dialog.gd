@@ -1,8 +1,11 @@
 extends "res://scripts/ui/screen.gd"
-## The pause dialog: continue, levels, four settings and the font credit, on a dim scrim.
+## The pause dialog: continue, levels, four settings, the one-jelly option and the language, and the font credit, on a dim scrim.
 ## It runs while the tree is paused. A long press on its title opens the performance panel.
+## open() takes {"solo": the one-jelly state of the level (&"single", &"ready" or &"none"), "mode_solo": the mode in play};
+## the note says when the level starts again on resume, or that the level has no one-jelly version.
 
 const ToggleRow := preload("res://scripts/ui/toggle_row.gd")
+const LanguageRow := preload("res://scripts/ui/language_row.gd")
 
 const SETTINGS: Array = [
 	[&"music", "pause_music", &"music"],
@@ -15,6 +18,9 @@ var _scrim: ColorRect
 var _card: PanelContainer
 var _title: Label
 var _rows: Array = []
+var _solo_panel: PanelContainer
+var _solo_note: Label
+var _data: Dictionary = {}
 var _press_serial := 0
 var _title_tween: Tween
 
@@ -41,7 +47,8 @@ func _init() -> void:
 	var stack := UiTheme.vbox(16)
 	_card.add_child(stack)
 
-	_title = UiTheme.label(Strings.t("pause_title"), UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK)
+	_title = UiTheme.label("", UiTuning.SIZE_HEADING, UiTuning.WEIGHT_BOLD, Palette.INK)
+	Strings.bind(_title, "pause_title")
 	_title.mouse_filter = Control.MOUSE_FILTER_STOP
 	_title.gui_input.connect(_on_title_input)
 	_title.resized.connect(func() -> void: _title.pivot_offset = _title.size / 2.0)
@@ -54,21 +61,60 @@ func _init() -> void:
 	levels.pressed.connect(func() -> void: Game.open_levels())
 	stack.add_child(levels)
 
+	_solo_panel = UiTheme.panel(UiTheme.pad(UiTheme.box(Palette.MINT_LIGHT, UiTuning.CORNER_RADIUS, Palette.FLOOR_SHADOW, 2), 8, 6))
+	stack.add_child(_solo_panel)
+	var solo_box := UiTheme.vbox(0)
+	_solo_panel.add_child(solo_box)
+	var solo_row: Button = ToggleRow.new().setup_toggle(&"solo", "", &"jelly_happy")
+	Strings.bind(solo_row.label, "pause_solo")
+	solo_box.add_child(solo_row)
+	_rows.append(solo_row)
+	_solo_note = UiTheme.paragraph("", UiTuning.SIZE_TINY + 2, UiTuning.WEIGHT_BODY, Palette.INK_SOFT)
+	_solo_note.visible = false
+	solo_box.add_child(_solo_note)
+
 	var settings := UiTheme.panel(UiTheme.pad(UiTheme.box(Palette.MINT_LIGHT, UiTuning.CORNER_RADIUS, Palette.FLOOR_SHADOW, 2), 8, 6))
 	stack.add_child(settings)
 	var rows := UiTheme.vbox(0)
 	settings.add_child(rows)
 	for entry: Array in SETTINGS:
-		var row: Button = ToggleRow.new().setup_toggle(entry[0], Strings.t(entry[1]), entry[2])
+		var row: Button = ToggleRow.new().setup_toggle(entry[0], "", entry[2])
+		Strings.bind(row.label, entry[1])
 		rows.add_child(row)
 		_rows.append(row)
+	var language: Button = LanguageRow.new().setup_language()
+	rows.add_child(language)
+	_rows.append(language)
 
-	stack.add_child(UiTheme.paragraph(Strings.t("font_credit"), UiTuning.SIZE_TINY, UiTuning.WEIGHT_BODY, Palette.INK_SOFT))
+	var credit := UiTheme.paragraph("", UiTuning.SIZE_TINY, UiTuning.WEIGHT_BODY, Palette.INK_SOFT)
+	Strings.bind(credit, "font_credit")
+	stack.add_child(credit)
 
 
-func _fill(_data: Dictionary) -> void:
+func _ready() -> void:
+	Bus.setting_changed.connect(func(key: StringName, _value: bool) -> void:
+		if key == &"solo":
+			_update_solo_note())
+	Bus.locale_changed.connect(func(_locale: StringName) -> void: _update_solo_note())
+
+
+func _fill(data: Dictionary) -> void:
+	_data = data
+	_solo_panel.visible = data.get("solo", &"single") != &"single"
 	for row in _rows:
 		row.refresh()
+	_update_solo_note()
+
+
+func _update_solo_note() -> void:
+	var key := ""
+	if _data.get("solo", &"single") == &"none":
+		key = "pause_solo_none"
+	elif bool(Save.setting(&"solo")) != bool(_data.get("mode_solo", false)):
+		key = "pause_solo_restart"
+	_solo_note.visible = key != ""
+	if key != "":
+		_solo_note.text = Strings.t(key)
 
 
 func _play_in() -> void:

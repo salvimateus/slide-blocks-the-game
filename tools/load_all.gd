@@ -1,5 +1,6 @@
 extends SceneTree
-# Loads each script under res://autoload and res://scripts, and checks that Nunito has each character of strings.gd.
+# Loads each script under res://autoload and res://scripts, checks that Nunito has each character of strings.gd,
+# and checks that each text table of strings.gd has the keys and the {name} placeholders of the pt table.
 
 const ROOTS: Array[String] = ["res://autoload", "res://scripts"]
 const FONT_PATH := "res://ui/fonts/Nunito-VariableFont_wght.ttf"
@@ -19,6 +20,7 @@ func _initialize() -> void:
 		else:
 			loaded += 1
 	_check_glyphs(failed)
+	_check_tables(failed)
 	if failed.is_empty():
 		print("LOAD_OK %d" % loaded)
 		quit(0)
@@ -57,6 +59,39 @@ func _check_glyphs(failed: PackedStringArray) -> void:
 			missing += String.chr(code)
 	if not missing.is_empty():
 		failed.append("%s (glyphs missing: %s)" % [FONT_PATH, missing])
+
+
+func _check_tables(failed: PackedStringArray) -> void:
+	var strings := load(STRINGS_PATH) as Script
+	if strings == null:
+		return
+	var constants := strings.get_script_constant_map()
+	var tables: Dictionary = constants.get("TABLES", {})
+	var reference: Dictionary = constants.get("PT", {})
+	if tables.is_empty() or reference.is_empty():
+		failed.append("strings.gd (no TABLES or no PT table)")
+		return
+	var placeholder := RegEx.create_from_string("\\{(\\w+)\\}")
+	for locale: StringName in tables:
+		var table: Dictionary = tables[locale]
+		for key: String in reference:
+			if not table.has(key):
+				failed.append("strings.gd (%s: key '%s' is missing)" % [locale, key])
+			elif _placeholders(placeholder, table[key]) != _placeholders(placeholder, reference[key]):
+				failed.append("strings.gd (%s: key '%s' has different placeholders)" % [locale, key])
+		for key: String in table:
+			if not reference.has(key):
+				failed.append("strings.gd (%s: key '%s' is not in pt)" % [locale, key])
+
+
+## The sorted set of the {name} placeholders of `text`.
+func _placeholders(placeholder: RegEx, text: String) -> PackedStringArray:
+	var names := {}
+	for found in placeholder.search_all(text):
+		names[found.get_string(1)] = true
+	var list := PackedStringArray(names.keys())
+	list.sort()
+	return list
 
 
 func _collect_chars(value: Variant, chars: Dictionary) -> void:

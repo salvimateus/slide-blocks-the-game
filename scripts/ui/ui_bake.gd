@@ -21,6 +21,8 @@ void fragment() {
 static var _active: Node = null
 static var _cache := {}
 static var _pending := {}
+## Jobs of the batch that bakes now. A fetch of one of them joins it, so a look never bakes twice.
+static var _in_flight := {}
 static var _busy := false
 
 
@@ -140,18 +142,20 @@ static func flatten_label(label: Label) -> void:
 ## The baked texture of `key`, or null while it is not baked. `rect` is the drawing area in local base units;
 ## it can extend past the item for outlines. `make` returns a new CanvasItem that draws the art in vector form
 ## with its origin at the item origin. `waiter`, when given, gets queue_redraw() when the texture is ready.
-static func fetch(key: String, rect: Rect2, make: Callable, waiter: CanvasItem = null) -> Texture2D:
+## `max_scale`, when above 0, caps the bake pixel scale of this item, so large art leaves room in the atlas.
+static func fetch(key: String, rect: Rect2, make: Callable, waiter: CanvasItem = null, max_scale := 0.0) -> Texture2D:
 	if _active == null:
 		return null
 	# Layout and tweens leave float noise in sizes: the key uses quarter units.
 	var grid := Vector2(0.25, 0.25)
-	var full := "%s@%.3f|%s|%s" % [key, pixel_scale(), str(rect.position.snapped(grid)), str(rect.size.snapped(grid))]
+	var s := pixel_scale() if max_scale <= 0.0 else minf(pixel_scale(), max_scale)
+	var full := "%s@%.3f|%s|%s" % [key, s, str(rect.position.snapped(grid)), str(rect.size.snapped(grid))]
 	var tex: Texture2D = _cache.get(full)
 	if tex != null:
 		return tex
-	var job: Dictionary = _pending.get(full, {})
+	var job: Dictionary = _pending.get(full, _in_flight.get(full, {}))
 	if job.is_empty():
-		job = {"make": make, "rect": rect, "waiters": []}
+		job = {"make": make, "rect": rect, "scale": s, "waiters": []}
 		_pending[full] = job
 	if waiter != null:
 		job.waiters.append(weakref(waiter))
@@ -166,7 +170,6 @@ static func pixel_scale() -> float:
 
 func _bake_batch() -> void:
 	_busy = true
-	var s := pixel_scale()
 	var jobs: Array = []
 	var x := 0
 	var y := 0
@@ -178,7 +181,7 @@ func _bake_batch() -> void:
 		if not (job.make as Callable).is_valid():
 			_pending.erase(key)
 			continue
-		var px := Vector2i((job.rect.size * s).ceil()) + Vector2i(GAP, GAP)
+		var px := Vector2i((job.rect.size * job.scale).ceil()) + Vector2i(GAP, GAP)
 		if x > 0 and x + px.x > ATLAS_WIDTH:
 			x = 0
 			y += row
@@ -193,6 +196,7 @@ func _bake_batch() -> void:
 		row = maxi(row, px.y)
 	for job: Dictionary in jobs:
 		_pending.erase(job.key)
+		_in_flight[job.key] = job
 	if jobs.is_empty():
 		_busy = false
 		return
@@ -201,8 +205,8 @@ func _bake_batch() -> void:
 	var source := _viewport(atlas_size)
 	for job: Dictionary in jobs:
 		var holder := Node2D.new()
-		holder.scale = Vector2(s, s)
-		holder.position = Vector2(job.slot) - job.rect.position * s
+		holder.scale = Vector2(job.scale, job.scale)
+		holder.position = Vector2(job.slot) - job.rect.position * job.scale
 		holder.add_child(job.make.call())
 		source.add_child(holder)
 	add_child(source)
@@ -230,9 +234,10 @@ func _bake_batch() -> void:
 	for job: Dictionary in jobs:
 		var region := AtlasTexture.new()
 		region.atlas = atlas
-		region.region = Rect2(Vector2(job.slot), job.rect.size * s)
+		region.region = Rect2(Vector2(job.slot), job.rect.size * job.scale)
 		region.filter_clip = true
 		_cache[job.key] = region
+		_in_flight.erase(job.key)
 		for ref: WeakRef in job.waiters:
 			var item := ref.get_ref() as CanvasItem
 			if item != null:
