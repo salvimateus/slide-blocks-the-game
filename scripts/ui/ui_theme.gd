@@ -9,6 +9,10 @@ const NUNITO := preload("res://ui/fonts/Nunito-VariableFont_wght.ttf")
 static var ZONE_THREE := Palette.METER_GOLD
 static var ZONE_TWO := Palette.TRAY_HIGHLIGHT
 static var ZONE_ONE := Palette.CORAL_SOFT
+# The lit segments of the move meter, one for each zone.
+static var ZONE_THREE_LIT := Palette.STAR
+static var ZONE_TWO_LIT := Palette.METER_PERI
+static var ZONE_ONE_LIT := Palette.CORAL
 
 const BUTTON_STATES: Array[String] = ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]
 const FONT_COLOR_STATES: Array[String] = [
@@ -35,6 +39,9 @@ static func build() -> Theme:
 	ZONE_THREE = Palette.METER_GOLD
 	ZONE_TWO = Palette.TRAY_HIGHLIGHT
 	ZONE_ONE = Palette.CORAL_SOFT
+	ZONE_THREE_LIT = Palette.STAR
+	ZONE_TWO_LIT = Palette.METER_PERI
+	ZONE_ONE_LIT = Palette.CORAL
 	var theme := Theme.new()
 	theme.default_font = font(UiTuning.WEIGHT_BODY)
 	theme.default_font_size = UiTuning.SIZE_BODY

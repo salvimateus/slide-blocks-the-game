@@ -29,6 +29,7 @@ const LIGHT := {
 	&"STAR_DEEP": Color("#B87501"),
 	&"GRAY_TILE": Color("#B6B7BE"),
 	&"METER_GOLD": Color("#F8D89C"),   # star mixed with cream_light
+	&"METER_PERI": Color("#9FA0FF"),   # a lit segment of the 2-star zone
 	&"KNOB": Color("#FFF9F1"),         # the knob of a switch
 	&"SWITCH_ON": Color("#7471D6"),    # the track of a switch that is on
 	&"SWITCH_ON_EDGE": Color("#5E59BB"),
@@ -64,6 +65,7 @@ const DARK := {
 	&"STAR_DEEP": Color("#B87501"),
 	&"GRAY_TILE": Color("#8E8FA8"),
 	&"METER_GOLD": Color("#6E521A"),
+	&"METER_PERI": Color("#A3A1FF"),
 	&"KNOB": Color("#F3EEFF"),
 	&"SWITCH_ON": Color("#5B58D6"),
 	&"SWITCH_ON_EDGE": Color("#8583F0"),
@@ -101,6 +103,7 @@ static var STAR: Color = LIGHT.STAR
 static var STAR_DEEP: Color = LIGHT.STAR_DEEP
 static var GRAY_TILE: Color = LIGHT.GRAY_TILE
 static var METER_GOLD: Color = LIGHT.METER_GOLD
+static var METER_PERI: Color = LIGHT.METER_PERI
 static var KNOB: Color = LIGHT.KNOB
 static var SWITCH_ON: Color = LIGHT.SWITCH_ON
 static var SWITCH_ON_EDGE: Color = LIGHT.SWITCH_ON_EDGE
@@ -153,6 +156,7 @@ static func apply(name: StringName) -> void:
 	STAR_DEEP = t.STAR_DEEP
 	GRAY_TILE = t.GRAY_TILE
 	METER_GOLD = t.METER_GOLD
+	METER_PERI = t.METER_PERI
 	KNOB = t.KNOB
 	SWITCH_ON = t.SWITCH_ON
 	SWITCH_ON_EDGE = t.SWITCH_ON_EDGE

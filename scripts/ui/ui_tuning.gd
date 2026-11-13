@@ -33,7 +33,8 @@ const COUNTER_POP_TIME := 0.25
 const STAR_FALL_DISTANCE := 120.0
 const STAR_FALL_TIME := 0.7
 const STAR_FALL_SPIN := 1.6            # radians
-const METER_MARKER_TIME := 0.25
+const METER_POP_SCALE := 1.45          # the pop of a segment that a move lights
+const METER_POP_TIME := 0.24
 const PROGRESS_TIME := 0.3
 
 # Tension.

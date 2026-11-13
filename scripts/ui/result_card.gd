@@ -170,7 +170,7 @@ func _show_star(i: int) -> void:
 	Bus.star_shown.emit(i + 1)
 
 
-# Counts the time and the moves from zero, and moves the marker with the moves.
+# Counts the time and the moves from zero, and lights the bar with the moves.
 func _set_counts(k: float) -> void:
 	var moves: int = _summary.get("moves", 0)
 	var shown := roundi(lerpf(0.0, moves, k))
