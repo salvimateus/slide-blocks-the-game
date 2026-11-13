@@ -30,6 +30,10 @@ const LIGHT := {
 	&"GRAY_TILE": Color("#B6B7BE"),
 	&"METER_GOLD": Color("#F8D89C"),   # star mixed with cream_light
 	&"KNOB": Color("#FFF9F1"),         # the knob of a switch
+	&"SWITCH_ON": Color("#7471D6"),    # the track of a switch that is on
+	&"SWITCH_ON_EDGE": Color("#5E59BB"),
+	&"SWITCH_OFF": Color("#E3E2EA"),   # the hollow track of a switch that is off
+	&"SWITCH_OFF_EDGE": Color("#777888"), # its rim, knob and glyph
 	&"JELLY_FACE": Color("#EBF6F5"),   # the body of a jelly icon in a settings row
 	# Obstacle: a raised wall block, darker than every paint color and block body.
 	&"OBSTACLE_TOP": Color("#6C68D0"),
@@ -61,6 +65,10 @@ const DARK := {
 	&"GRAY_TILE": Color("#8E8FA8"),
 	&"METER_GOLD": Color("#6E521A"),
 	&"KNOB": Color("#F3EEFF"),
+	&"SWITCH_ON": Color("#5B58D6"),
+	&"SWITCH_ON_EDGE": Color("#8583F0"),
+	&"SWITCH_OFF": Color("#16152F"),
+	&"SWITCH_OFF_EDGE": Color("#A09FBC"),
 	&"JELLY_FACE": Color("#CDE8E4"),
 	&"OBSTACLE_TOP": Color("#27246E"),
 	&"OBSTACLE_SIDE": Color("#15134A"),
@@ -94,6 +102,10 @@ static var STAR_DEEP: Color = LIGHT.STAR_DEEP
 static var GRAY_TILE: Color = LIGHT.GRAY_TILE
 static var METER_GOLD: Color = LIGHT.METER_GOLD
 static var KNOB: Color = LIGHT.KNOB
+static var SWITCH_ON: Color = LIGHT.SWITCH_ON
+static var SWITCH_ON_EDGE: Color = LIGHT.SWITCH_ON_EDGE
+static var SWITCH_OFF: Color = LIGHT.SWITCH_OFF
+static var SWITCH_OFF_EDGE: Color = LIGHT.SWITCH_OFF_EDGE
 static var JELLY_FACE: Color = LIGHT.JELLY_FACE
 static var OBSTACLE_TOP: Color = LIGHT.OBSTACLE_TOP
 static var OBSTACLE_SIDE: Color = LIGHT.OBSTACLE_SIDE
@@ -142,6 +154,10 @@ static func apply(name: StringName) -> void:
 	GRAY_TILE = t.GRAY_TILE
 	METER_GOLD = t.METER_GOLD
 	KNOB = t.KNOB
+	SWITCH_ON = t.SWITCH_ON
+	SWITCH_ON_EDGE = t.SWITCH_ON_EDGE
+	SWITCH_OFF = t.SWITCH_OFF
+	SWITCH_OFF_EDGE = t.SWITCH_OFF_EDGE
 	JELLY_FACE = t.JELLY_FACE
 	OBSTACLE_TOP = t.OBSTACLE_TOP
 	OBSTACLE_SIDE = t.OBSTACLE_SIDE

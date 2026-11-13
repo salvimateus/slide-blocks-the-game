@@ -1,11 +1,12 @@
 extends "res://scripts/ui/toggle_row.gd"
-## The dark mode row: a moon, a name and a switch. A tap changes the theme through Save, and Game then builds the UI again.
+## The dark mode row: a moon, a name and a switch with a sun (light) and a moon (dark). A tap changes the theme through Save, and Game then builds the UI again.
 
 const Strings := preload("res://scripts/ui/strings.gd")
 
 
 func setup_theme() -> Button:
 	setup_toggle(&"theme", "", &"moon")
+	_switch.set_glyphs(&"moon", &"sun")
 	Strings.bind(label, "pause_dark_mode")
 	return self
 
